@@ -1,10 +1,8 @@
-
-// ------------------------------------------------------
 // This file handles WebSocket connections for the chat.
 // It upgrades HTTP requests to WebSocket connections,
 // registers each connected client, and starts the read
 // and write pumps for message exchange.
-// ------------------------------------------------------
+
 
 package handlers
 
@@ -45,12 +43,12 @@ func ChatHandler(c *websocket.Conn) {
 	}
 
 	hub.Register <- client
-	log.Println("✅ Client connected:", c.RemoteAddr())
+	log.Println(" Client connected:", c.RemoteAddr())
 
 	// Start concurrent readers and writers for this client
 	go client.WritePump()
 	client.ReadPump(hub)
 
-	log.Println("❌ Client disconnected:", c.RemoteAddr())
+	log.Println(" Client disconnected:", c.RemoteAddr())
 }
 

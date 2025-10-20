@@ -1,9 +1,7 @@
 
-
-// This package is responsible for initializing
-// and configuring the Fiber app (HTTP server).
-// It registers all HTTP and WebSocket routes and
-// links them to the appropriate handlers.
+// This package initializes and configures the Fiber
+// app (HTTP server). It registers all HTTP and
+// WebSocket routes and links them to handlers.
 
 
 package server
@@ -12,43 +10,55 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 
-	// Handlers contain the business logic for various endpoints.
+	// Local imports
+	"github.com/Emmanuel326/chatserver/internal/http"
 	"github.com/Emmanuel326/chatserver/internal/handlers"
 )
 
-// New creates and returns a new Fiber app instance.
-// Called from main.go — acts as the main entry point for
-// both REST and WebSocket routes.
+// New creates and returns a fully configured Fiber app.
+// It is called from main.go — acts as the main entry point
+// for both REST and WebSocket endpoints.
 func New() *fiber.App {
-	// Initialize a new Fiber app
-	app := fiber.New()
+	// Initialize Fiber with custom config (e.g. increased upload limit)
+	app := fiber.New(fiber.Config{
+		BodyLimit: 20 * 1024 * 1024, // 20 MB max request body (uploads)
+		AppName:   "ChatServer 🚀",
+	})
 
-	
-	// ROOT / HEALTH ENDPOINT
-	
-	// Quick check that the server is live.
+	// ----------------------
+	// ROOT / HEALTH CHECK
+	// ----------------------
+	// Basic check to confirm the server is running.
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("ChatServer is running 🚀")
 	})
 
 	// ----------------------
 	// WEBSOCKET ENDPOINT
-	// ------------------------
-	// Step 1: HandleWebSocket checks if upgrade is allowed.
-	// Step 2: websocket.New() actually upgrades the connection
-	//         and delegates it to ChatHandler for per-client logic.
+	// ----------------------
+	// Step 1: HandleWebSocket ensures upgrade conditions.
+	// Step 2: websocket.New(...) upgrades to WS and manages per-client logic.
 	app.Get("/ws", handlers.HandleWebSocket, websocket.New(handlers.ChatHandler))
 
-	// ------------------------
-	// FUTURE ENDPOINTS
-	// -------------------
-	// Example image uploads (POST):
-	// app.Post("/upload", handlers.UploadHandler)
-	//
-	// Example REST API (GET messages):
-	// app.Get("/api/messages", handlers.GetMessages)
+	// ----------------------
+	// FILE UPLOAD ENDPOINT
+	// ----------------------
+	// Handles POST /upload for image or file uploads.
+	app.Post("/upload", http.UploadHandler)
 
-	// Return the configured app so main.go can start it
+	// ----------------------
+	// STATIC FILES
+	// ----------------------
+	// Serves uploaded files from the local /uploads directory.
+	app.Static("/uploads", "./uploads")
+
+	// ----------------------
+	// (Optional future routes)
+	// ----------------------
+	// app.Get("/api/messages", handlers.GetMessages)
+	// app.Post("/api/send", handlers.SendMessage)
+
+	// Return the configured app instance to main.go
 	return app
 }
 

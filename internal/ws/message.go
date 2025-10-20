@@ -1,15 +1,10 @@
-
-// ---------------------------------------------
-// Represents the structure of messages sent/received
-// over WebSocket (JSON friendly for any frontend).
-// ---------------------------------------------
-
 package ws
 
-// Message defines the JSON structure for chat messages.
+// Message defines the structure of chat messages
 type Message struct {
-	Username string `json:"username"`
-	Content  string `json:"content"`
-	Type     string `json:"type"` // e.g. "text", "image"
+	Type      string `json:"type"`      // e.g. "text" or "image"
+	Username  string `json:"username"`  // who sent it
+	Content   string `json:"content"`   // message text or image URL
+	Timestamp int64  `json:"timestamp"` // unix time for ordering
 }
 
