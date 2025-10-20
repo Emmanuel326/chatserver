@@ -9,6 +9,7 @@ package server
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
+	"github.com/Emmanuel326/chatserver/internal/users"
 
 	// Local imports
 	"github.com/Emmanuel326/chatserver/internal/http"
@@ -51,6 +52,8 @@ func New() *fiber.App {
 	// ----------------------
 	// Serves uploaded files from the local /uploads directory.
 	app.Static("/uploads", "./uploads")
+	app.Post("/register", users.RegisterHandler)
+        app.Post("/login", users.LoginHandler)
 
 	// ----------------------
 	// (Optional future routes)
