@@ -1,0 +1,42 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Output of the go build command
+*.out
+
+# Dependency directories
+vendor/
+
+# Logs and temp files
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+
+# IDEs and editors
+.vscode/
+.idea/
+.DS_Store
+
+# OS-specific
+Thumbs.db
+
+# Uploads and local data
+uploads/
+.env
+
+# Go build cache
+*.o
+*.a
+
+# Nvim backup/session stuff
+*.un~
+Session.vim
+
