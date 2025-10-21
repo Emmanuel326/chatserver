@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/Emmanuel326/chatserver/internal/api"
@@ -10,11 +9,19 @@ import (
 	"github.com/Emmanuel326/chatserver/internal/config"
 	"github.com/Emmanuel326/chatserver/internal/domain"
 	"github.com/Emmanuel326/chatserver/internal/ports/sqlite"
-	"github.com/Emmanuel326/chatserver/internal/ws" // New: Import for WebSocket Hub
+	"github.com/Emmanuel326/chatserver/internal/ws" 
+	"github.com/Emmanuel326/chatserver/pkg/logger"
+	"go.uber.org/zap"
+
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 )
 
+func init(){
+  logger.InitGlobalLogger()
+  defer logger.Sync()
+  logger.Log().Info("Application is Starting...")
+}
 // ApplicationServices holds all initialized services and components
 // This central struct facilitates Dependency Injection across the application.
 type ApplicationServices struct {
@@ -67,10 +74,9 @@ func main() {
 	// --- 6. Setup and Run Gin Router ---
 	router := setupRouter(app)
 
-	// Start the server
-	fmt.Printf("🚀 Server running on http://localhost:%s\n", cfg.SERVER_PORT)
+  logger.Log().Info(fmt.Sprintf("🚀 Server running on http://localhost:%s", cfg.SERVER_PORT))
 	if err := router.Run(":" + cfg.SERVER_PORT); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+		logger.Log().Fatal("Server failed to start: %v", zap.Error(err))
 	}
 }
 
