@@ -3,17 +3,19 @@ package api
 import (
 	"net/http"
 
-	"github.com/Emmanuel326/chatserver/internal/api/middleware" // <--- NEW IMPORT
+	"github.com/Emmanuel326/chatserver/internal/api/middleware"
 	"github.com/Emmanuel326/chatserver/internal/auth"
 	"github.com/Emmanuel326/chatserver/internal/domain"
+	"github.com/Emmanuel326/chatserver/internal/ws"
 	"github.com/gin-gonic/gin"
 )
 
 // RegisterRoutes sets up all the API endpoints and injects dependencies.
-func RegisterRoutes(router *gin.Engine, userService domain.UserService, jwtManager *auth.JWTManager) {
+func RegisterRoutes(router *gin.Engine, userService domain.UserService, jwtManager *auth.JWTManager, hub *ws.Hub) {
 	
 	// Initialize Handlers (Dependency Injection)
 	userHandler := NewUserHandler(userService, jwtManager) 
+	wsHandler := NewWSHandler(hub) // <--- FIX: wsHandler is now initialized here
 
 	// V1 API Group
 	v1 := router.Group("/v1")
@@ -25,19 +27,20 @@ func RegisterRoutes(router *gin.Engine, userService domain.UserService, jwtManag
 		// --- Protected Routes Group ---
 		// All routes inside this group will pass through the AuthMiddleware
 		secured := v1.Group("/")
-		secured.Use(middleware.AuthMiddleware(jwtManager)) // <--- Apply the JWT Middleware
+		secured.Use(middleware.AuthMiddleware(jwtManager)) 
 		{
 			// Test Protected Endpoint
 			secured.GET("/test-auth", func(c *gin.Context) {
 				userID, _ := middleware.GetUserIDFromContext(c)
 				c.JSON(http.StatusOK, gin.H{
 					"message": "Access granted",
-					"user_id": userID, // Show the ID extracted from the token
+					"user_id": userID, 
 				})
 			})
 			
-			// TODO: protected.GET("/messages/history", messageHandler.GetHistory)
-			// TODO: protected.GET("/ws", wsHandler.HandleWebSocket) // The final destination for the WS upgrade
+			// WebSocket Upgrade Endpoint
+			secured.GET("/ws", wsHandler.ServeWs) // <--- wsHandler is now defined
 		}
 	}
 }
+
