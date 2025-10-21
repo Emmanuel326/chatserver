@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"encoding/json" // <-- ADDED: For JSON deserialization
 	"log"
 	"time"
 
@@ -34,9 +35,9 @@ func (c *Client) readPump() {
 	// Set an initial read deadline to ensure the connection isn't idle forever
 	c.Conn.SetReadDeadline(time.Now().Add(pongWait))
 	// Set a handler for pong messages to reset the read deadline
-	c.Conn.SetPongHandler(func(string) error { 
-		c.Conn.SetReadDeadline(time.Now().Add(pongWait)); 
-		return nil 
+	c.Conn.SetPongHandler(func(string) error {
+		c.Conn.SetReadDeadline(time.Now().Add(pongWait));
+		return nil
 	})
 
 	for {
@@ -49,17 +50,22 @@ func (c *Client) readPump() {
 			break
 		}
 		
-		// TODO: Deserialize the payload into the Message struct here
-		// For now, we wrap the raw bytes and send them to the Hub for routing
-		message := &Message{
-			SenderID: c.UserID,
-			RecipientID: 2, // Example recipient ID for testing P2P
-			Content: string(payload),
-			Timestamp: time.Now(),
-		}
-		
+		// --- FIX START ---
+		var message Message // Use the Message struct from models.go
+		if err := json.Unmarshal(payload, &message); err != nil {
+            log.Printf("JSON unmarshal error from UserID %d: %v", c.UserID, err)
+            continue // Skip invalid message
+        }
+
+		// CRITICAL FIX: Inject the sender's ID (the only authenticated ID)
+		message.SenderID = c.UserID 
+        
+        // Add server-side timestamp
+        message.Timestamp = time.Now()
+		// --- FIX END ---
+
 		// Send the message to the Hub's broadcast channel
-		c.Hub.Broadcast <- message
+		c.Hub.Broadcast <- &message // Send the pointer to the message
 	}
 }
 

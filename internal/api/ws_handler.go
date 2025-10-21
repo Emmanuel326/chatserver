@@ -3,44 +3,58 @@ package api
 import (
 	"log"
 	"net/http"
-
-	"github.com/Emmanuel326/chatserver/internal/api/middleware"
+	"github.com/Emmanuel326/chatserver/internal/auth" 
 	"github.com/Emmanuel326/chatserver/internal/ws"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
 
-// Upgrader defines the configuration for upgrading HTTP to WebSocket.
+
+// Define the global upgrader instance
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	// Allows connections from any origin during development. MUST be restricted in production.
+	
 	CheckOrigin: func(r *http.Request) bool {
-		return true 
+		return true
 	},
 }
 
-// WSHandler contains the dependency on the Hub.
+
+// WSHandler contains the dependency on the Hub and JWT Manager.
 type WSHandler struct {
 	Hub *ws.Hub
+	jwtManager *auth.JWTManager // <-- Must be used for validation
 }
 
-// NewWSHandler creates a new handler instance.
-func NewWSHandler(hub *ws.Hub) *WSHandler {
-	return &WSHandler{Hub: hub}
-}
-
-// ServeWs handles the HTTP request, upgrades the connection, and starts the WS client.
-func (h *WSHandler) ServeWs(c *gin.Context) {
-	// 1. Retrieve UserID from the Gin context (Set by the JWT Middleware)
-	userID, exists := middleware.GetUserIDFromContext(c)
-	if !exists {
-		// This should theoretically not happen if the route is protected by AuthMiddleware
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found in context"})
-		return
+// NewWSHandler remains the same (Correct)
+func NewWSHandler(hub *ws.Hub, jwtManager *auth.JWTManager) *WSHandler {
+	return &WSHandler{
+		Hub: hub,
+		jwtManager: jwtManager,
 	}
+}
 
-	// 2. Upgrade HTTP Connection to WebSocket
+// ServeWs handles the HTTP request, performs authentication, upgrades the connection, and starts the WS client.
+func (h *WSHandler) ServeWs(c *gin.Context) {
+    // 1. Extract token from query parameter
+    tokenString := c.Query("token")
+    if tokenString == "" {
+        log.Println("WS Connect attempt: Missing token query parameter")
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
+        return
+    }
+
+    // 2. Validate token and get User ID
+    claims, err := h.jwtManager.ValidateToken(tokenString) // Assuming your JWTManager exposes ValidateToken
+    if err != nil {
+        log.Printf("WS Connect attempt: Invalid token: %v", err)
+        c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+        return
+    }
+    userID := claims.UserID // Ensure claims struct has UserID
+
+	// 3. Upgrade HTTP Connection to WebSocket
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		log.Printf("Failed to upgrade connection for UserID %d: %v", userID, err)
@@ -49,6 +63,6 @@ func (h *WSHandler) ServeWs(c *gin.Context) {
 	
 	log.Printf("User %d successfully connected via WebSocket.", userID)
 
-	// 3. Hand off the connection to the WS Client/Hub
-	ws.ServeWs(h.Hub, conn, userID)
+	
+	ws.ServeWs(h.Hub, conn, userID) 
 }
