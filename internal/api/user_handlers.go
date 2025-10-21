@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/Emmanuel326/chatserver/internal/auth" // <--- NEW IMPORT
+	"github.com/Emmanuel326/chatserver/internal/auth" 
 	"github.com/Emmanuel326/chatserver/internal/domain"
 	"github.com/gin-gonic/gin"
 )
@@ -58,6 +58,20 @@ func (h *UserHandler) Register(c *gin.Context) {
 		"message": "User registered successfully",
 		"token": token, // <--- NOW RETURNS THE TOKEN
 	})
+}
+
+
+// ListUsers handles GET /v1/users to retrieve all registered users.
+func (h *UserHandler) ListUsers(c *gin.Context) {
+	users, err := h.UserService.ListAll(c.Request.Context())
+	
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user list"})
+		return
+	}
+	
+	
+	c.JSON(http.StatusOK, users)
 }
 
 // Login handles user authentication via HTTP POST.

@@ -2,13 +2,15 @@ package sqlite
 
 import (
 	"context"
+	"database/sql" // Needed for sql.ErrNoRows
+	"log"
 
 	"github.com/Emmanuel326/chatserver/internal/domain"
 	"github.com/jmoiron/sqlx"
 )
 
 // UserRepository implements the domain.UserRepository interface.
-type UserRepository struct {
+type UserRepository struct { 
 	db *sqlx.DB
 }
 
@@ -22,11 +24,7 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	user := &domain.User{}
 	query := "SELECT id, username, email, password, created_at FROM users WHERE email = ?"
 	
-	// sqlx.Get is a convenience function that executes the query and loads the result into the struct.
 	err := r.db.GetContext(ctx, user, query, email)
-	
-	// A common pattern: if err == sql.ErrNoRows, you'd return a specific domain error
-	// (for now, we'll return the raw error for simplicity).
 	if err != nil {
 		return nil, err
 	}
@@ -49,20 +47,37 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*domain.User, e
 func (r *UserRepository) Create(ctx context.Context, user *domain.User) (*domain.User, error) {
 	query := "INSERT INTO users (username, email, password, created_at) VALUES (?, ?, ?, ?)"
 	
-	// For SQLite, the last inserted ID can be retrieved by executing the query directly.
 	result, err := r.db.ExecContext(ctx, query, user.Username, user.Email, user.Password, user.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get the last inserted ID
 	lastID, err := result.LastInsertId()
 	if err != nil {
 		return nil, err
 	}
 
-	// Update the user struct with the new ID
 	user.ID = lastID
-
 	return user, nil
+}
+
+// GetAll retrieves a list of all registered users.
+// This implements the final missing method from the domain.UserRepository interface.
+func (r *UserRepository) GetAll(ctx context.Context) ([]*domain.User, error) {
+	// IMPORTANT: Exclude the password column from the selection
+	query := `
+		SELECT id, username, email, created_at
+		FROM users
+		ORDER BY username ASC;
+	`
+	users := []*domain.User{}
+	err := r.db.SelectContext(ctx, &users, query)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return users, nil
+		}
+		log.Printf("Error retrieving all users: %v", err)
+		return nil, err
+	}
+	return users, nil
 }

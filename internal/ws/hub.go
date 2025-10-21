@@ -1,41 +1,44 @@
 package ws
 
 import (
+	"context"
 	"log"
 	"sync"
+	
+	"github.com/Emmanuel326/chatserver/internal/domain"
 )
 
 // Hub maintains the set of active clients and broadcasts messages to the clients.
-// It runs in a single goroutine to safely manage the state (client map).
 type Hub struct {
-	// Registered clients: maps a UserID to a set of active Clients (since one user can have multiple devices).
+	// Registered clients: maps a UserID to a set of active Clients
 	clients map[int64][]*Client
 
-	// Inbound messages from the clients to be broadcast or processed.
+	// Inbound messages from the clients
 	Broadcast chan *Message
-
-	// Register requests from the clients.
+	
+	// Client registration/unregistration channels
 	Register chan *Client
-
-	// Unregister requests from clients.
 	Unregister chan *Client
 	
-	// Mutex to protect the clients map, although operations should primarily happen in the Run loop.
-	// Used here mainly for safety checks if accessed outside Run.
-	mu sync.RWMutex 
+	// Dependency for persistence
+	messageService domain.MessageService
+
+	// Mutex to protect the clients map
+	mu sync.RWMutex
 }
 
-// NewHub creates and returns a new Hub.
-func NewHub() *Hub {
+// NewHub creates and returns a new Hub, injected with MessageService.
+func NewHub(messageService domain.MessageService) *Hub {
 	return &Hub{
-		Broadcast:  make(chan *Message),
-		Register:   make(chan *Client),
+		Broadcast: make(chan *Message),
+		Register: make(chan *Client),
 		Unregister: make(chan *Client),
-		clients:    make(map[int64][]*Client),
+		clients: make(map[int64][]*Client),
+		messageService: messageService,
 	}
 }
 
-// Run starts the Hub's main Goroutine. It reads from the channels and modifies the client map safely.
+// Run starts the Hub's main Goroutine.
 func (h *Hub) Run() {
 	log.Println("⚡️ WebSocket Hub started successfully.")
 	for {
@@ -59,7 +62,6 @@ func (h *Hub) handleRegister(client *Client) {
 	h.clients[userID] = append(h.clients[userID], client)
 	log.Printf("Client registered. UserID: %d. Total connections for user: %d", userID, len(h.clients[userID]))
 
-	// Optionally send a system message back to the user
 	client.Send <- NewSystemMessage("Welcome to the chat server.")
 }
 
@@ -90,17 +92,32 @@ func (h *Hub) handleUnregister(client *Client) {
 	}
 }
 
-// handleBroadcast routes a message to the intended recipients.
+// handleBroadcast routes a message to the intended recipients and persists it.
 func (h *Hub) handleBroadcast(message *Message) {
-	// TODO: Integrate persistence logic here (i.e., call the MessageService)
-	// For now, we only route the message.
-	
-	if message.RecipientID != 0 {
+	// 1. Persist the message (returns a *domain.Message)
+	persistedDomainMsg, err := h.messageService.Save(
+		context.Background(),
+		message.SenderID,
+		message.RecipientID,
+		message.Type,
+		message.Content,
+	)
+
+	if err != nil {
+		log.Printf("Error persisting message from %d to %d: %v", message.SenderID, message.RecipientID, err)
+		return
+	}
+
+	// 2. TYPE CONVERSION: Convert the *domain.Message to a *ws.Message for routing
+	persistedWsMsg := h.domainToWsMessage(persistedDomainMsg)
+
+	// 3. Route the message
+	if persistedWsMsg.RecipientID != 0 {
 		// Handle private message (P2P)
-		h.sendMessageToUser(message.SenderID, message)
-		h.sendMessageToUser(message.RecipientID, message)
+		h.sendMessageToUser(persistedWsMsg.SenderID, persistedWsMsg) // Send echo to sender
+		h.sendMessageToUser(persistedWsMsg.RecipientID, persistedWsMsg) // Send to recipient
 	} else {
-		// Handle room/global message (TODO: Implement rooms later)
+		// Handle room/global message
 		log.Println("Warning: Global broadcast not yet implemented.")
 	}
 }
@@ -121,4 +138,16 @@ func (h *Hub) sendMessageToUser(userID int64, message *Message) {
 			}
 		}
 	}
+}
+
+// Helper function to convert a *domain.Message to a *ws.Message for transport.
+// This resolves the type mismatch error in handleBroadcast.
+func (h *Hub) domainToWsMessage(dMsg *domain.Message) *Message {
+    return &Message{
+        SenderID:    dMsg.SenderID,
+        RecipientID: dMsg.RecipientID,
+        Type:        dMsg.Type,
+        Content:     dMsg.Content,
+        Timestamp:   dMsg.Timestamp, 
+    }
 }

@@ -6,26 +6,36 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// Migrate runs the initial database schema setup.
-// In a real application, you'd use a dedicated migration library.
-// For JIT learning, this single file is sufficient.
-func Migrate(db *sqlx.DB) {
-	// 1. Create the 'users' table
-	usersTableSQL := `
-	CREATE TABLE IF NOT EXISTS users (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		username TEXT NOT NULL UNIQUE,
-		email TEXT NOT NULL UNIQUE,
-		password TEXT NOT NULL,
-		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-	);`
+// SQL for table creation.
+const schema = `
+CREATE TABLE IF NOT EXISTS users (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	username TEXT NOT NULL,
+	email TEXT NOT NULL UNIQUE,
+	password TEXT NOT NULL,
+	created_at DATETIME NOT NULL
+);
 
-	_, err := db.Exec(usersTableSQL)
+CREATE TABLE IF NOT EXISTS messages (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	sender_id INTEGER NOT NULL,
+	recipient_id INTEGER NOT NULL,
+	type TEXT NOT NULL,
+	content TEXT NOT NULL,
+	timestamp DATETIME NOT NULL,
+	-- Foreign keys (optional for SQLite, but good practice)
+	FOREIGN KEY(sender_id) REFERENCES users(id),
+	FOREIGN KEY(recipient_id) REFERENCES users(id)
+);
+`
+
+// Migrate runs all necessary database schema migrations.
+func Migrate(db *sqlx.DB) {
+	log.Println("Database schema migration started...")
+	_, err := db.Exec(schema)
 	if err != nil {
-		log.Fatalf("FATAL: Failed to create users table: %v", err)
+		log.Fatalf("Failed to execute migrations: %v", err)
 	}
-	
-	// TODO: Message table migration will be added here later
-	
-	log.Println("✅ Database schema migrated successfully (users table created/exists).")
+	log.Println(" Database schema migrated successfully (users and messages tables created/exists).")
 }
+

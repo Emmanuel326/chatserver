@@ -2,68 +2,65 @@ package domain
 
 import (
 	"context"
-	"errors"
-	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Concrete implementation of the domain.UserService interface
+// userService is the concrete implementation of the domain.UserService interface.
 type userService struct {
 	userRepo UserRepository
-	// We'll add JWT generating dependency here later
 }
 
 // NewUserService creates a new UserService instance.
-// It receives the UserRepository as a dependency (Dependency Injection).
+// This is the function that main.go is looking for.
 func NewUserService(repo UserRepository) UserService {
 	return &userService{userRepo: repo}
 }
 
-// Register creates a new user, hashes the password, and saves it.
+// Register implements the domain.UserService interface.
 func (s *userService) Register(ctx context.Context, username, email, password string) (*User, error) {
-	// 1. Check for existing user by email (business rule)
-	existing, err := s.userRepo.GetByEmail(ctx, email)
-	if existing != nil {
-		// This is a custom domain error you'd define, but for JIT we use built-in error
-		return nil, errors.New("user already exists with this email") 
+	// Simple validation
+	if username == "" || email == "" || password == "" {
+		return nil, &ValidationError{Msg: "Username, email, and password are required"}
 	}
-	// We should check if the error is sql.ErrNoRows, but for simplicity, we proceed
-
-	// 2. Hash the password (Security rule from C/Rust background!)
+	
+	// Check if user already exists
+	if _, err := s.userRepo.GetByEmail(ctx, email); err == nil {
+		return nil, &ConflictError{Msg: "User with this email already exists"}
+	}
+	
+	// Hash the password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, errors.New("failed to hash password")
+		return nil, err
 	}
 
-	// 3. Create the User model
-	user := &User{
-		Username:  username,
-		Email:     email,
-		Password:  string(hashedPassword),
-		CreatedAt: time.Now(),
-	}
-
-	// 4. Persist (delegates to the Ports layer)
+	user := NewUser(username, email, string(hashedPassword))
+	
+	// Delegate creation to the Repository
 	return s.userRepo.Create(ctx, user)
 }
 
-// Authenticate verifies credentials and returns the user.
+// Authenticate implements the domain.UserService interface.
 func (s *userService) Authenticate(ctx context.Context, email, password string) (*User, error) {
-	// 1. Retrieve the user by email (delegates to the Ports layer)
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		// A database-related error, potentially "no rows"
-		return nil, errors.New("invalid credentials")
+		return nil, &NotFoundError{Msg: "Invalid email or password"}
 	}
 
-	// 2. Compare the stored hash with the provided password (Security rule)
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
-	if err != nil {
-		// bcrypt.CompareHashAndPassword returns an error if they don't match
-		return nil, errors.New("invalid credentials")
+	// Compare the stored hashed password with the provided password
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+		return nil, &NotFoundError{Msg: "Invalid email or password"}
 	}
 
-	// Success: return the authenticated user
 	return user, nil
 }
+
+// ListAll retrieves all registered users.
+// This implements the newly added method to the domain.UserService interface.
+func (s *userService) ListAll(ctx context.Context) ([]*User, error) {
+	return s.userRepo.GetAll(ctx)
+}
+
+// NOTE: You will also need NewUser() function and custom error types
+// (like ValidationError, ConflictError, NotFoundError) which are typically defined in user.go
