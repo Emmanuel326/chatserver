@@ -14,15 +14,10 @@ import (
 func RegisterRoutes(router *gin.Engine, userService domain.UserService, jwtManager *auth.JWTManager, hub *ws.Hub, messageService domain.MessageService) {
 	
 	// Initialize Handlers (Dependency Injection)
-<<<<<<< HEAD
 	userHandler := NewUserHandler(userService, jwtManager)
 	// FIX 1: Pass the jwtManager to the wsHandler constructor
 	wsHandler := NewWSHandler(hub, jwtManager) 
 	messageHandler := NewMessageHandler(messageService)
-=======
-	userHandler := NewUserHandler(userService, jwtManager) 
-	wsHandler := NewWSHandler(hub) 
->>>>>>> 6ee29e9 (docs: removed verbose comments)
 
 	// V1 API Group
 	v1 := router.Group("/v1")
@@ -51,15 +46,9 @@ func RegisterRoutes(router *gin.Engine, userService domain.UserService, jwtManag
 					"user_id": userID,
 				})
 			})
-<<<<<<< HEAD
 
 			//Message History endpoint
 			secured.GET("/messages/history/:recipientID", messageHandler.GetConversationHistory)
-=======
-			
-			// WebSocket Upgrade Endpoint
-			secured.GET("/ws", wsHandler.ServeWs)
->>>>>>> 6ee29e9 (docs: removed verbose comments)
 		}
 	}
 }
