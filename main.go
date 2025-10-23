@@ -30,10 +30,12 @@ type ApplicationServices struct {
 	// Repositories (Ports) - These are the concrete implementations
 	UserRepository domain.UserRepository
 	MessageRepository domain.MessageRepository
+	GroupRepository domain.GroupRepository
 
 	// Domain Services (Interfaces) - These are the logic layers
 	UserService domain.UserService
 	MessageService domain.MessageService
+	GroupService domain.GroupService
 
 	// Auth Component
 	JWTManager *auth.JWTManager
@@ -54,11 +56,14 @@ func main() {
 	// --- 3. Initialize Repositories (Ports) ---
 	userRepo := sqlite.NewUserRepository(db)
 	messageRepo := sqlite.NewMessageRepository(db)
+	groupRepo := sqlite.NewGroupRepository(db)
 
 	// --- 4. Initialize Core Components and Domain Services ---
 	userService := domain.NewUserService(userRepo)
 	messageService := domain.NewMessageService(messageRepo)
+
 	jwtManager := auth.NewJWTManager(cfg)
+	groupService := domain.NewGroupService(groupRepo, userRepo)
 
 	// --- Initialize WebSocket Hub and start its main Goroutine ---
 	// FIX 1: Pass the messageService to the NewHub constructor (YOUR CORE FIX)
@@ -71,8 +76,10 @@ func main() {
 		DB: db,
 		UserRepository: userRepo,
 		MessageRepository: messageRepo,
+		GroupRepository: groupRepo,
 		UserService: userService,
 		MessageService: messageService,
+		GroupService: groupService,
 		JWTManager: jwtManager,
 		ChatHub: chatHub, // Injects the Hub
 	}
