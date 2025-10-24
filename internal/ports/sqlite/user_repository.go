@@ -10,7 +10,7 @@ import (
 )
 
 // UserRepository implements the domain.UserRepository interface.
-type UserRepository struct { 
+type UserRepository struct {
 	db *sqlx.DB
 }
 
@@ -26,6 +26,9 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	
 	err := r.db.GetContext(ctx, user, query, email)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, &domain.NotFoundError{} // Return domain error for consistent service layer handling
+		}
 		return nil, err
 	}
 	return user, nil
@@ -38,6 +41,25 @@ func (r *UserRepository) GetByID(ctx context.Context, id int64) (*domain.User, e
 	
 	err := r.db.GetContext(ctx, user, query, id)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, &domain.NotFoundError{}
+		}
+		return nil, err
+	}
+	return user, nil
+}
+
+// GetByUsername retrieves a user by their username. (NEW IMPLEMENTATION)
+// This is required by the updated UserRepository interface in domain/user.go
+func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
+	user := &domain.User{}
+	query := "SELECT id, username, email, password, created_at FROM users WHERE username = ?"
+	
+	err := r.db.GetContext(ctx, user, query, username)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, &domain.NotFoundError{}
+		}
 		return nil, err
 	}
 	return user, nil
@@ -62,9 +84,7 @@ func (r *UserRepository) Create(ctx context.Context, user *domain.User) (*domain
 }
 
 // GetAll retrieves a list of all registered users.
-// This implements the final missing method from the domain.UserRepository interface.
 func (r *UserRepository) GetAll(ctx context.Context) ([]*domain.User, error) {
-	// IMPORTANT: Exclude the password column from the selection
 	query := `
 		SELECT id, username, email, created_at
 		FROM users

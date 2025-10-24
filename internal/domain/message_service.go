@@ -2,42 +2,83 @@ package domain
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 )
 
-// messageService is the concrete implementation of the domain.MessageService interface.
+// messageService is the concrete implementation of the MessageService interface.
 type messageService struct {
 	messageRepo MessageRepository
+	userRepo    UserRepository
+	groupRepo   GroupRepository
+	hub         Hub
 }
 
-// NewMessageService creates a new MessageService instance.
-func NewMessageService(repo MessageRepository) MessageService {
-	return &messageService{messageRepo: repo}
-}
-
-// Save handles the persistence of a new message.
-func (s *messageService) Save(ctx context.Context, senderID, recipientID int64, msgType MessageType, content string) (*Message, error) {
-	
-	// Business Rule: Ensure message content is not empty (simple validation)
-	if content == "" {
-		// Using a specific context error to indicate a business rule violation (or return a custom domain error)
-		return nil, context.Canceled 
+// NewMessageService creates a new instance of the MessageService.
+func NewMessageService(messageRepo MessageRepository, userRepo UserRepository, groupRepo GroupRepository, hub Hub) MessageService {
+	return &messageService{
+		messageRepo: messageRepo,
+		userRepo:    userRepo,
+		groupRepo:   groupRepo,
+		hub:         hub,
 	}
-	
-	msg := &Message{
-		SenderID: senderID,
-		RecipientID: recipientID,
-		Type: msgType,
-		Content: content,
-		Timestamp: time.Now(),
-	}
-	
-	// Delegate persistence to the Repository
-	return s.messageRepo.Create(ctx, msg)
 }
 
-// GetConversationHistory retrieves message history between two users.
+// Save implements the MessageService Save method, directly persisting the message.
+// This was needed because the MessageService interface expects this method.
+func (s *messageService) Save(ctx context.Context, message *Message) (*Message, error) {
+	// Proxies the request directly to the repository
+	return s.messageRepo.Save(ctx, message)
+}
+
+// GetConversationHistory retrieves a list of messages between two users (P2P).
 func (s *messageService) GetConversationHistory(ctx context.Context, userID1, userID2 int64, limit int) ([]*Message, error) {
-	// Delegate retrieval to the Repository
-	return s.messageRepo.FindConversation(ctx, userID1, userID2, limit)
+	if limit <= 0 {
+		limit = 50 // Default limit
+	}
+	// FIX: s.messageRepo.FindConversationHistory now matches the interface
+	return s.messageRepo.FindConversationHistory(ctx, userID1, userID2, limit) 
+}
+
+// SendGroupMessage saves a message to the database and broadcasts it to all group members.
+func (s *messageService) SendGroupMessage(ctx context.Context, senderID int64, groupID int64, content string) (*Message, error) {
+	// 1. Check if sender is a member of the group
+	memberIDs, err := s.groupRepo.FindMembersByGroupID(ctx, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check group membership: %w", err)
+	}
+
+	isMember := false
+	for _, id := range memberIDs {
+		if id == senderID {
+			isMember = true
+			break
+		}
+	}
+
+	if !isMember {
+		return nil, errors.New("sender is not a member of this group")
+	}
+
+	// 2. Create the message struct
+	message := &Message{
+		SenderID:    senderID,
+		RecipientID: groupID, // Recipient is the Group ID
+		Type:        "group",
+		Content:     content,
+		Timestamp:   time.Now(),
+	}
+
+	// 3. Save the message
+	// FIX: s.messageRepo.Save now matches the corrected repository interface
+	savedMessage, err := s.messageRepo.Save(ctx, message) 
+	if err != nil {
+		return nil, fmt.Errorf("failed to save message: %w", err)
+	}
+
+	// 4. Broadcast the message to all group members (WebSocket Hub)
+	s.hub.BroadcastGroupMessage(groupID, savedMessage)
+
+	return savedMessage, nil
 }

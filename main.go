@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context" // <-- FIX: ADDED MISSING CONTEXT IMPORT
 	"fmt"
 	"net/http"
 
@@ -9,11 +10,11 @@ import (
 	"github.com/Emmanuel326/chatserver/internal/config"
 	"github.com/Emmanuel326/chatserver/internal/domain"
 	"github.com/Emmanuel326/chatserver/internal/ports/sqlite"
-	"github.com/Emmanuel326/chatserver/internal/ws" // Keep this import
-	"github.com/Emmanuel326/chatserver/pkg/logger" // Teammate's logger package
+	"github.com/Emmanuel326/chatserver/internal/ws"
+	"github.com/Emmanuel326/chatserver/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	"go.uber.org/zap" // Teammate's logging dependency
+	"go.uber.org/zap"
 )
 
 func init() {
@@ -44,6 +45,28 @@ type ApplicationServices struct {
 	ChatHub *ws.Hub
 }
 
+
+// createDefaultUsers checks if Ava (ID 1) and Mike (ID 2) exist and creates them if not.
+func createDefaultUsers(ctx context.Context, userService domain.UserService) {
+	// 1. Create Ava (ID 1)
+	if _, err := userService.GetUserByUsername(ctx, "ava"); err != nil {
+		if _, err := userService.CreateUser(ctx, "ava", "password"); err == nil {
+			logger.Log().Info("Created default user: ava")
+		} else {
+			logger.Log().Error("Failed to create default user: ava", zap.Error(err))
+		}
+	}
+	
+	// 2. Create Mike (ID 2)
+	if _, err := userService.GetUserByUsername(ctx, "mike"); err != nil {
+		if _, err := userService.CreateUser(ctx, "mike", "password"); err == nil {
+			logger.Log().Info("Created default user: mike")
+		} else {
+			logger.Log().Error("Failed to create default user: mike", zap.Error(err))
+		}
+	}
+}
+
 func main() {
 	// --- 1. Load Configuration ---
 	cfg := config.Load()
@@ -59,16 +82,24 @@ func main() {
 	groupRepo := sqlite.NewGroupRepository(db)
 
 	// --- 4. Initialize Core Components and Domain Services ---
-	userService := domain.NewUserService(userRepo)
-	messageService := domain.NewMessageService(messageRepo)
-
 	jwtManager := auth.NewJWTManager(cfg)
+	userService := domain.NewUserService(userRepo)
 	groupService := domain.NewGroupService(groupRepo, userRepo)
+	// FIX: The user creation logic will only work after the UserService interface is updated below.
+	createDefaultUsers(context.Background(), userService) 
+	
+	// HANDLE CIRCULAR DEPENDENCY & HUB INITIALIZATION:
+	
+	// 1. Initialize the Hub with nil services (it just needs to exist for MessageService).
+	chatHub := ws.NewHub(nil, nil)
+	go chatHub.Run()
 
-	// --- Initialize WebSocket Hub and start its main Goroutine ---
-	// FIX 1: Pass the messageService to the NewHub constructor (YOUR CORE FIX)
-	chatHub := ws.NewHub(messageService)
-	go chatHub.Run() // CRUCIAL: Starts the concurrent hub manager
+    // 2. Initialize MessageService, passing all four required dependencies, including the chatHub.
+	messageService := domain.NewMessageService(messageRepo, userRepo, groupRepo, chatHub)
+
+    // 3. Inject the created services back into the Hub.
+	chatHub.MessageService = messageService
+	chatHub.GroupService = groupService
 
 	// --- 5. Package Services for Injection ---
 	app := &ApplicationServices{
@@ -81,7 +112,7 @@ func main() {
 		MessageService: messageService,
 		GroupService: groupService,
 		JWTManager: jwtManager,
-		ChatHub: chatHub, // Injects the Hub
+		ChatHub: chatHub,
 	}
 
 	// --- 6. Setup and Run Gin Router ---
@@ -96,7 +127,6 @@ func main() {
 
 // setupRouter initializes Gin and registers routes.
 func setupRouter(app *ApplicationServices) *gin.Engine {
-	// Teammate's change: logger.Log().Info is likely used elsewhere, but for Gin:
 	gin.SetMode(gin.ReleaseMode)
 	
 	router := gin.Default()
@@ -106,8 +136,14 @@ func setupRouter(app *ApplicationServices) *gin.Engine {
 	})
 
 	// Register all API routes from the /api layer
-	// Pass the UserService, JWTManager, ChatHub, and MessageService (for routing logic)
-	api.RegisterRoutes(router, app.UserService, app.JWTManager, app.ChatHub, app.MessageService)
+	api.RegisterRoutes(
+		router,
+		app.UserService,
+		app.JWTManager,
+		app.ChatHub,
+		app.MessageService,
+		app.GroupService,
+	)
 
 	return router
 }

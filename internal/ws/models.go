@@ -9,6 +9,7 @@ import (
 // Message is the struct used for transport between the client and the Hub.
 type Message struct {
 	// These IDs should match the domain.User IDs
+	ID          int64 `json: "id"`
 	SenderID    int64 `json:"sender_id"`
 	RecipientID int64 `json:"recipient_id"` // 0 for broadcast/room messages
 	Type        domain.MessageType `json:"type"`

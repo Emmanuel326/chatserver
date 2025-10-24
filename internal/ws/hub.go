@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"time"
 	
 	"github.com/Emmanuel326/chatserver/internal/domain"
 )
@@ -20,21 +21,24 @@ type Hub struct {
 	Register chan *Client
 	Unregister chan *Client
 	
-	// Dependency for persistence
-	messageService domain.MessageService
+	// Dependencies for business logic (Now exported!)
+	MessageService domain.MessageService // EXPORTED FIELD
+	GroupService domain.GroupService     // EXPORTED FIELD
 
 	// Mutex to protect the clients map
 	mu sync.RWMutex
 }
 
-// NewHub creates and returns a new Hub, injected with MessageService.
-func NewHub(messageService domain.MessageService) *Hub {
+// NewHub creates and returns a new Hub, injected with MessageService and GroupService.
+func NewHub(messageService domain.MessageService, groupService domain.GroupService) *Hub {
 	return &Hub{
 		Broadcast: make(chan *Message),
 		Register: make(chan *Client),
 		Unregister: make(chan *Client),
 		clients: make(map[int64][]*Client),
-		messageService: messageService,
+		// FIX 1: Use exported field names in struct literal
+		MessageService: messageService, 
+		GroupService: groupService, 
 	}
 }
 
@@ -94,31 +98,68 @@ func (h *Hub) handleUnregister(client *Client) {
 
 // handleBroadcast routes a message to the intended recipients and persists it.
 func (h *Hub) handleBroadcast(message *Message) {
-	// 1. Persist the message (returns a *domain.Message)
-	persistedDomainMsg, err := h.messageService.Save(
+	// 1. Construct the domain message struct
+	domainMsg := &domain.Message{
+		SenderID:    message.SenderID,
+		RecipientID: message.RecipientID,
+		Type:        message.Type,
+		Content:     message.Content,
+		Timestamp:   time.Now(),
+	}
+
+	// 2. Persistence (Always Persist First)
+	// FIX 2: Use exported field name h.MessageService
+	persistedDomainMsg, err := h.MessageService.Save( 
 		context.Background(),
-		message.SenderID,
-		message.RecipientID,
-		message.Type,
-		message.Content,
+		domainMsg,
 	)
 
 	if err != nil {
-		log.Printf("Error persisting message from %d to %d: %v", message.SenderID, message.RecipientID, err)
+		log.Printf("Error persisting message from %d to %d: %v", domainMsg.SenderID, domainMsg.RecipientID, err)
 		return
 	}
 
-	// 2. TYPE CONVERSION: Convert the *domain.Message to a *ws.Message for routing
+	// 3. TYPE CONVERSION: Convert the *domain.Message to a *ws.Message for routing
 	persistedWsMsg := h.domainToWsMessage(persistedDomainMsg)
 
-	// 3. Route the message
-	if persistedWsMsg.RecipientID != 0 {
-		// Handle private message (P2P)
-		h.sendMessageToUser(persistedWsMsg.SenderID, persistedWsMsg) // Send echo to sender
-		h.sendMessageToUser(persistedWsMsg.RecipientID, persistedWsMsg) // Send to recipient
+	// 4. Determine Recipients (P2P vs Group)
+	
+	// Start with the sender (for echo)
+	recipientIDs := []int64{persistedWsMsg.SenderID}
+
+	// Try to get members list; if it succeeds, it's a group message.
+	// FIX 3: Use exported field name h.GroupService
+	members, err := h.GroupService.GetMembers(context.Background(), persistedWsMsg.RecipientID) 
+
+	if err == nil && len(members) > 0 {
+		// CASE A: Group Message (RecipientID is a valid GroupID)
+		log.Printf("Broadcasting message (ID %d) from User %d to Group %d (%d members)...",
+			persistedWsMsg.ID, persistedWsMsg.SenderID, persistedWsMsg.RecipientID, len(members))
+		
+		// Add all group members to the recipients list
+		recipientIDs = append(recipientIDs, members...)
+
 	} else {
-		// Handle room/global message
-		log.Println("Warning: Global broadcast not yet implemented.")
+		// CASE B: P2P Message (RecipientID is a UserID or an unknown ID)
+		log.Printf("P2P message (ID %d) from User %d to User %d...",
+			persistedWsMsg.ID, persistedWsMsg.SenderID, persistedWsMsg.RecipientID)
+
+		// Add the single recipient user (only if it wasn't a valid group broadcast)
+		if persistedWsMsg.RecipientID != 0 {
+			recipientIDs = append(recipientIDs, persistedWsMsg.RecipientID)
+		} else {
+			log.Println("Warning: Global broadcast not yet implemented and RecipientID is 0.")
+		}
+	}
+	
+	// 5. Dispatch the message to all determined recipients
+	sentTo := make(map[int64]bool)
+	for _, userID := range recipientIDs {
+		// Ensure we don't send the message multiple times (e.g., sender is also a group member)
+		if !sentTo[userID] {
+			h.sendMessageToUser(userID, persistedWsMsg)
+			sentTo[userID] = true
+		}
 	}
 }
 
@@ -140,14 +181,24 @@ func (h *Hub) sendMessageToUser(userID int64, message *Message) {
 	}
 }
 
-// Helper function to convert a *domain.Message to a *ws.Message for transport.
-// This resolves the type mismatch error in handleBroadcast.
+// domainToWsMessage converts a domain message to a WebSocket message format.
 func (h *Hub) domainToWsMessage(dMsg *domain.Message) *Message {
     return &Message{
         SenderID:    dMsg.SenderID,
         RecipientID: dMsg.RecipientID,
         Type:        dMsg.Type,
         Content:     dMsg.Content,
-        Timestamp:   dMsg.Timestamp, 
+        Timestamp:   dMsg.Timestamp,
+        ID:          dMsg.ID, 
     }
+}
+
+// BroadcastGroupMessage implements the domain.Hub interface.
+// It is called by the MessageService after a group message is saved.
+func (h *Hub) BroadcastGroupMessage(groupID int64, message *domain.Message) {
+    // Convert the domain message to the Hub's internal ws.Message type
+    wsMsg := h.domainToWsMessage(message)
+    
+    // Send the message into the hub's main broadcast channel for processing/routing
+    h.Broadcast <- wsMsg
 }

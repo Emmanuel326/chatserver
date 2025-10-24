@@ -1,7 +1,7 @@
 package api
 
 import (
-	"context"
+	
 	"net/http"
 	"strconv"
 
@@ -57,8 +57,8 @@ func (h *MessageHandler) GetConversationHistory(c *gin.Context) {
 	}
 	
 	// 4. Call Domain Service to retrieve history
-	// We use a separate context with timeout if needed, but for now, use the request context.
-	messages, err := h.MessageService.GetConversationHistory(context.Background(), senderID, recipientID, limit)
+	// FIX: Use request context instead of context.Background()
+	messages, err := h.MessageService.GetConversationHistory(c.Request.Context(), senderID, recipientID, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve message history"})
 		return
@@ -67,6 +67,43 @@ func (h *MessageHandler) GetConversationHistory(c *gin.Context) {
 	// 5. Success Response
 	c.JSON(http.StatusOK, gin.H{
 		"messages": messages,
-		"count":    len(messages),
+		"count": len(messages),
 	})
+}
+
+// SendGroupMessage handles sending a new message to a specific group.
+// POST /v1/messages/group/:groupID
+func (h *MessageHandler) SendGroupMessage(c *gin.Context) { // <--- NEW METHOD IMPLEMENTATION
+	// 1. Get authenticated UserID (senderID)
+	senderID, exists := middleware.GetUserIDFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "sender not authenticated"})
+		return
+	}
+
+	// 2. Get Group ID from URL parameter
+	groupIDStr := c.Param("groupID")
+	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
+	if err != nil || groupID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID format"})
+		return
+	}
+
+	// 3. Parse request body
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: message content is required"})
+		return
+	}
+
+	// 4. Call MessageService to send the message (handles saving and broadcasting)
+	_, err = h.MessageService.SendGroupMessage(c.Request.Context(), senderID, groupID, req.Content)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to send group message", "details": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Message sent successfully to group"})
 }

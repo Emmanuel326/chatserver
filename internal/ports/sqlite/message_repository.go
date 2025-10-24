@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"log"
+	"time" // Needed for time.Now() if you use it, though usually done in domain
 
 	"github.com/Emmanuel326/chatserver/internal/domain"
 	"github.com/jmoiron/sqlx"
@@ -18,20 +19,23 @@ func NewMessageRepository(db *sqlx.DB) domain.MessageRepository {
 	return &messageRepository{db: db}
 }
 
-// Create persists a new message to the database.
-func (r *messageRepository) Create(ctx context.Context, message *domain.Message) (*domain.Message, error) {
+// Save persists a new message to the database. (Renamed from Create)
+func (r *messageRepository) Save(ctx context.Context, message *domain.Message) (*domain.Message, error) {
+	// Ensure timestamp is set if the domain service didn't set it (safety check)
+	if message.Timestamp.IsZero() {
+		message.Timestamp = time.Now()
+	}
+
 	query := `
 		INSERT INTO messages (sender_id, recipient_id, type, content, timestamp)
 		VALUES (:sender_id, :recipient_id, :type, :content, :timestamp);
 	`
-	// Named query execution
 	res, err := r.db.NamedExecContext(ctx, query, message)
 	if err != nil {
-		log.Printf("Error creating message: %v", err)
+		log.Printf("Error saving message: %v", err)
 		return nil, err
 	}
 
-	// Get the last inserted ID
 	id, err := res.LastInsertId()
 	if err != nil {
 		return nil, err
@@ -40,11 +44,11 @@ func (r *messageRepository) Create(ctx context.Context, message *domain.Message)
 	return message, nil
 }
 
-// FindConversation retrieves the message history between two users.
-func (r *messageRepository) FindConversation(ctx context.Context, userID1, userID2 int64, limit int) ([]*domain.Message, error) {
+// FindConversationHistory retrieves the message history between two users. (Renamed from FindConversation)
+func (r *messageRepository) FindConversationHistory(ctx context.Context, userID1, userID2 int64, limit int) ([]*domain.Message, error) {
 	// Query to find messages where (sender=1 AND recipient=2) OR (sender=2 AND recipient=1)
 	query := `
-		SELECT * FROM messages
+		SELECT id, sender_id, recipient_id, type, content, timestamp FROM messages
 		WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)
 		ORDER BY timestamp DESC
 		LIMIT ?;
@@ -53,7 +57,7 @@ func (r *messageRepository) FindConversation(ctx context.Context, userID1, userI
 	// The arguments are passed to the query placeholders in order: userID1, userID2, userID2, userID1, limit
 	err := r.db.SelectContext(ctx, &messages, query, userID1, userID2, userID2, userID1, limit)
 	if err != nil {
-		log.Printf("Error finding conversation: %v", err)
+		log.Printf("Error finding conversation history: %v", err)
 		return nil, err
 	}
 	
@@ -64,4 +68,3 @@ func (r *messageRepository) FindConversation(ctx context.Context, userID1, userI
 
 	return messages, nil
 }
-

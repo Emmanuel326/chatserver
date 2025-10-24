@@ -11,32 +11,53 @@ import (
 )
 
 // RegisterRoutes sets up all the API endpoints and injects dependencies.
-func RegisterRoutes(router *gin.Engine, userService domain.UserService, jwtManager *auth.JWTManager, hub *ws.Hub, messageService domain.MessageService) {
+func RegisterRoutes(
+	router *gin.Engine,
+	userService domain.UserService,
+	jwtManager *auth.JWTManager,
+	hub *ws.Hub,
+	messageService domain.MessageService,
+	groupService domain.GroupService,
+) {
 	
 	// Initialize Handlers (Dependency Injection)
+	// NOTE: We assume these constructors exist in internal/api/
 	userHandler := NewUserHandler(userService, jwtManager)
-	// FIX 1: Pass the jwtManager to the wsHandler constructor
-	wsHandler := NewWSHandler(hub, jwtManager) 
+	wsHandler := NewWSHandler(hub, jwtManager)
 	messageHandler := NewMessageHandler(messageService)
+	groupHandler := NewGroupHandler(groupService)
+
+	// --- WebSocket Route ---
+	// The client connects to /ws, so it must be outside the /v1 group
+	router.GET("/ws", wsHandler.ServeWs)
 
 	// V1 API Group
 	v1 := router.Group("/v1")
 	{
-		// --- Public User/Auth Routes ---
+		// --- Public User/Auth Routes (Registration and Login) ---
 		v1.POST("/users/register", userHandler.Register)
+		// Confirmed login route is POST /v1/users/login
 		v1.POST("/users/login", userHandler.Login)
 
-		// FIX 2: Move the WebSocket endpoint OUTSIDE the secured group
-        // It authenticates via the 'token' query parameter inside the handler.
-		v1.GET("/ws", wsHandler.ServeWs) 
-        
+
 		// --- Protected Routes Group ---
-		// All routes inside this group will pass through the AuthMiddleware
 		secured := v1.Group("/")
 		secured.Use(middleware.AuthMiddleware(jwtManager))
 		{
-            // User Listing Endpoint (Secured)
-            secured.GET("/users", userHandler.ListUsers) // Ensuring this is still here
+ 			// User Listing Endpoint (FIXED: Removed invalid character and cleaned indentation)
+			secured.GET("/users", userHandler.ListUsers)
+
+			// Message History endpoint
+			secured.GET("/messages/history/:recipientID", messageHandler.GetConversationHistory)
+			
+			// Group Endpoints
+			secured.POST("/groups", groupHandler.CreateGroup)
+			secured.POST("/groups/:groupID/members", groupHandler.AddMember)
+			// ADDED: Missing GetMembers route for completeness
+			secured.GET("/groups/:groupID/members", groupHandler.GetMembers)
+
+			// Message Send Endpoint (via API) - The target of our final test
+			secured.POST("/messages/group/:groupID", messageHandler.SendGroupMessage)
 
 			// Test Protected Endpoint
 			secured.GET("/test-auth", func(c *gin.Context) {
@@ -46,9 +67,6 @@ func RegisterRoutes(router *gin.Engine, userService domain.UserService, jwtManag
 					"user_id": userID,
 				})
 			})
-
-			//Message History endpoint
-			secured.GET("/messages/history/:recipientID", messageHandler.GetConversationHistory)
 		}
 	}
 }

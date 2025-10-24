@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
 	created_at DATETIME NOT NULL
 );
 
+-- NOTE: recipient_id can be a UserID (P2P) or a GroupID (Group Chat).
 CREATE TABLE IF NOT EXISTS messages (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	sender_id INTEGER NOT NULL,
@@ -23,9 +24,26 @@ CREATE TABLE IF NOT EXISTS messages (
 	type TEXT NOT NULL,
 	content TEXT NOT NULL,
 	timestamp DATETIME NOT NULL,
-	-- Foreign keys (optional for SQLite, but good practice)
-	FOREIGN KEY(sender_id) REFERENCES users(id),
-	FOREIGN KEY(recipient_id) REFERENCES users(id)
+	FOREIGN KEY(sender_id) REFERENCES users(id)
+);
+
+-- Group Chat Tables --
+CREATE TABLE IF NOT EXISTS groups (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	name TEXT NOT NULL,
+	owner_id INTEGER NOT NULL,
+	created_at DATETIME NOT NULL,
+	FOREIGN KEY(owner_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS group_members (
+	group_id INTEGER NOT NULL,
+	user_id INTEGER NOT NULL,
+	joined_at DATETIME NOT NULL,
+	is_admin BOOLEAN NOT NULL DEFAULT FALSE, -- <--- THE FIX
+	PRIMARY KEY (group_id, user_id),
+	FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE CASCADE,
+	FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 `
 
@@ -36,6 +54,5 @@ func Migrate(db *sqlx.DB) {
 	if err != nil {
 		log.Fatalf("Failed to execute migrations: %v", err)
 	}
-	log.Println(" Database schema migrated successfully (users and messages tables created/exists).")
+	log.Println(" Database schema migrated successfully (all core tables created/exists).")
 }
-
