@@ -1,41 +1,56 @@
-ChatServer: High-Performance Real-Time Group Chat Backend
+# 💬 ChatServer
+> **High-Performance Real-Time Group Chat Backend (Built in Go)**
 
-The ChatServer is a Go-based backend designed for high-performance, authenticated group messaging. It utilizes a clean architectural pattern to ensure scalability, testability, and clear separation of concerns
+ChatServer is a **Go-based backend** for real-time, authenticated group messaging.  
+It follows a **Hexagonal Architecture (Ports & Adapters)** to ensure scalability, testability, and clean separation of concerns.
 
-System Architecture
-The application is built around a Hexagonal Architecture (Ports & Adapters), strictly separating the core business logic (Domain) from external dependencies (Infrastructure, Database, API Frameworks).
+---
 
+## 🧱 System Architecture
 
-Component,Technology,Role
-Language,Go (Golang),Primary application language.
-Framework,Gin,Handles all REST API routing and middleware.
-Database,SQLite,"Persistent, file-based storage (chatserver.db)."
-Real-Time,WebSockets,Dedicated ws.Hub for message broadcasting.
-Auth,JWT,Token-based authentication for APIs and WebSockets.
+### 🧭 Overview
+The system strictly separates **core business logic (Domain)** from **external dependencies** such as the database, API frameworks, and WebSockets.
 
+### 🧩 Core Components
 
-Data Flow: Message Broadcast
-API Handler (/v1/messages/group/:id): Receives an authenticated message via HTTP POST.
+| Component | Technology | Role |
+|------------|-------------|------|
+| **Language** | Go (Golang) | Primary application language |
+| **Framework** | Gin | REST API routing and middleware |
+| **Database** | SQLite | Persistent, file-based storage (`chatserver.db`) |
+| **Real-Time** | WebSockets | Dedicated `ws.Hub` for broadcasting messages |
+| **Auth** | JWT | Token-based authentication for APIs and WebSockets |
 
-Domain Service (MessageService): Checks group membership, saves the message via the repository, and forwards the data to the WebSocket Hub.
+---
 
-Real-Time Hub (ws.Hub): Identifies all active, connected clients belonging to the target group and broadcasts the message in real-time.
+## 🔄 Data Flow — Message Broadcast
 
+1. **API Handler** (`/v1/messages/group/:id`)  
+   Receives an authenticated message via HTTP `POST`.
 
-2.  Setup and Running
-Prerequisites
-Go (v1.20+)
+2. **Domain Service** (`MessageService`)  
+   - Checks group membership  
+   - Saves message via repository  
+   - Forwards it to WebSocket Hub
 
-git
+3. **WebSocket Hub** (`ws.Hub`)  
+   Identifies all active clients in the group and broadcasts the message in real-time.
 
-websocat (for testing WebSockets)
+---
 
-jq (for parsing tokens)
+## ⚙️ Setup & Running
 
-Installation and Build
+### 🧰 Prerequisites
+- Go (v1.20+)
+- Git
+- [`websocat`](https://github.com/vi/websocat) (for WebSocket testing)
+- [`jq`](https://stedolan.github.io/jq/) (for parsing tokens)
 
+---
 
-bash
+### 🏗️ Installation & Build
+
+```bash
 # Clone the repository
 git clone https://github.com/Emmanuel326/chatserver.git
 cd chatserver
@@ -44,82 +59,172 @@ cd chatserver
 go build -o chatserver_app .
 
 
+
 Running the Server
-Running the application automatically performs database migration and creates two default test users: Ava (ava@temp.com/password) and Mike (mike@temp.com/password).
+
+Running the app automatically performs DB migration and creates two default users:
+
+| Username | Email                                 | Password |
+| -------- | ------------------------------------- | -------- |
+| Ava      | [ava@temp.com](mailto:ava@temp.com)   | password |
+| Mike     | [mike@temp.com](mailto:mike@temp.com) | password |
+
 
 # Start the server
 ./chatserver_app
 
-(Server will log: 🚀 Server running on http://localhost:8080)
+
+Server log:
+
+🚀 Server running on http://localhost:8080
+
+🧩 API Reference
+
+All endpoints require a JWT token via the header:
+Authorization: Bearer <token>
+(except registration and login).
+
+🔐 A. Authentication & Users
+
+| Method | Endpoint             | Description                     |
+| ------ | -------------------- | ------------------------------- |
+| `POST` | `/v1/users/register` | Creates a new user              |
+| `POST` | `/v1/users/login`    | Authenticates user, returns JWT |
 
 
-3.  API Reference
-The server exposes REST endpoints, all requiring a JWT token via the Authorization: Bearer <token> header, except for user registration and login.
-
-A. Authentication & Users
-
-
-Method,Endpoint,Description
-POST,/v1/users/register,Creates a new user account.
-POST,/v1/users/login,Authenticates a user and returns a JWT token.
-
-
-# Get Ava's Token (Using the default test user email)
+Example — Get Ava’s Token
 AVA_TOKEN=$(curl -s -X POST http://localhost:8080/v1/users/login \
-     -H "Content-Type: application/json" \
-     -d '{"email": "ava@temp.com", "password": "password"}' | jq -r '.token')
+  -H "Content-Type: application/json" \
+  -d '{"email": "ava@temp.com", "password": "password"}' | jq -r '.token')
+
 echo "Ava's Token: $AVA_TOKEN"
 
-B. Group Messaging
-These endpoints are used to manage group membership and send persistent messages.
+
+💬 B. Group Messaging
+| Method | Endpoint                      | Auth | Description                    |
+| ------ | ----------------------------- | ---- | ------------------------------ |
+| `POST` | `/v1/messages/group/:groupID` | ✅    | Send & save group message      |
+| `POST` | `/v1/groups/:groupID/members` | ✅    | Add user to group (owner-only) |
 
 
-Method,Endpoint,Auth,Description
-POST,/v1/messages/group/:groupID,Yes,Sends and saves a message to a specific group. Requires sender to be a member.
-POST,/v1/groups/:groupID/members,Yes,Adds a user ID to a group (requires group ownership/permission).
-
-
-
-
-2. Send Message Example (Authenticated)
-
-Assuming Ava's token is in $AVA_TOKEN and she is a member of GROUP_ID=1.
-
+Example — Send Authenticated Message
 GROUP_ID=1
 MESSAGE_CONTENT='{"content": "This is the final test message."}'
 
 curl -X POST http://localhost:8080/v1/messages/group/$GROUP_ID \
-     -H "Content-Type: application/json" \
-     -H "Authorization: Bearer $AVA_TOKEN" \
-     -d "$MESSAGE_CONTENT"
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $AVA_TOKEN" \
+  -d "$MESSAGE_CONTENT"
 
 
 
-     4. 🌐 Real-Time WebSockets
-The WebSocket endpoint provides real-time broadcast and requires the JWT token be passed as a query parameter.
+🌐 Real-Time WebSockets
+🔗 Endpoint
+ws://localhost:8080/ws?token=<JWT_TOKEN>
 
-Endpoint: ws://localhost:8080/ws?token=<JWT_TOKEN>
-
-
-
-
-A. Connection Example
-
-# Connect Mike to the WebSocket feed
+⚡ Connection Example
+# Connect Mike to WebSocket feed
 websocat "ws://localhost:8080/ws?token=$MIKE_TOKEN"
 
-
-B. Message Format
-Messages broadcast through the WebSocket hub conform to the following JSON structure:
-
+📦 Message Format
 {
-    "type": "group_message",
-    "group_id": 1,
-    "sender_id": 3,
-    "content": "GROUP CHAT IS ALIVE! The journey is complete.",
-    "timestamp": "2025-10-24T05:23:00.000000Z"
+  "type": "group_message",
+  "group_id": 1,
+  "sender_id": 3,
+  "content": "GROUP CHAT IS ALIVE! The journey is complete.",
+  "timestamp": "2025-10-24T05:23:00.000000Z"
 }
 
 
+📚 Full API Reference
+🧾 5.1 Authentication & Public Endpoints
 
+| Method | Endpoint             | Description                            | Request Body                                    | Success Response               |
+| ------ | -------------------- | -------------------------------------- | ----------------------------------------------- | ------------------------------ |
+| `POST` | `/v1/users/register` | Create user                            | `{"username": "", "email": "", "password": ""}` | `{"id": 1, "username": "..."}` |
+| `POST` | `/v1/users/login`    | Authenticate user                      | `{"email": "", "password": ""}`                 | `{"token": "eyJhbGciOi..."}`   |
+| `GET`  | `/ws`                | WebSocket connection (JWT query param) | —                                               | Establishes WebSocket stream   |
+
+
+
+🔒 5.2 Protected Endpoints
+
+| Method | Endpoint        | Description                   | Path Params | Success Response                              |
+| ------ | --------------- | ----------------------------- | ----------- | --------------------------------------------- |
+| `GET`  | `/v1/users`     | List all users                | —           | `[{"id": 1, "username": "..."}, ...]`         |
+| `GET`  | `/v1/test-auth` | Validate JWT & return user ID | —           | `{"message": "Access granted", "user_id": 3}` |
+
+
+👥 B. Group Management
+| Method | Endpoint                      | Description       | Path Params | Request Body                     |
+| ------ | ----------------------------- | ----------------- | ----------- | -------------------------------- |
+| `POST` | `/v1/groups`                  | Create new group  | —           | `{"name": "General Chat"}`       |
+| `POST` | `/v1/groups/:groupID/members` | Add user to group | `:groupID`  | `{"user_id": 4}`                 |
+| `GET`  | `/v1/groups/:groupID/members` | Get group members | `:groupID`  | `[{"id": 3, "username": "..."}]` |
+
+
+🧠 Design Philosophy
+
+Clear separation of concerns (Domain vs Infrastructure)
+
+Fully testable and modular
+
+Built for real-time performance
+
+Minimal dependencies, maximum maintainability
+
+🤝 Contributing
+
+Pull requests are welcome!
+For major changes, open an issue first to discuss what you’d like to modify.
+
+---
+
+## 🧭 System Architecture(section 2)
+
+### Overview
+ChatServer separates **Domain Logic** (core business rules) from **Infrastructure** (frameworks, databases, APIs).
+
+
+
+         ┌────────────────────────┐
+         │   HTTP / WebSocket API │  ← Gin, JWT, WebSockets
+         └────────────┬───────────┘
+                      │
+            ┌─────────▼─────────┐
+            │   Application     │  ← Services, Handlers
+            └─────────┬─────────┘
+                      │
+         ┌────────────▼────────────┐
+         │        Domain           │  ← Core entities & logic
+         └────────────┬────────────┘
+                      │
+       ┌──────────────▼──────────────┐
+       │      Infrastructure         │  ← SQLite, Repositories
+       └─────────────────────────────┘
+
+
+
+
+
+
+---
+
+## 🧩 Core Components
+
+| Component | Technology | Role |
+|------------|-------------|------|
+| **Language** | Go (Golang) | Primary application language |
+| **Framework** | Gin | REST API routing and middleware |
+| **Database** | SQLite | Persistent, file-based storage (`chatserver.db`) |
+| **Real-Time** | WebSockets | Dedicated `ws.Hub` for broadcasting messages |
+| **Auth** | JWT | Token-based authentication for APIs and WebSockets |
+
+---
+
+
+
+
+
+Made with ❤️ in Go.
 
