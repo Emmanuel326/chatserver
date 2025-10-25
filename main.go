@@ -46,23 +46,23 @@ type ApplicationServices struct {
 }
 
 
-// createDefaultUsers checks if Ava (ID 1) and Mike (ID 2) exist and creates them if not.
+// createDefaultUsers checks if "tom" and "jerry" exist and creates them if not.
 func createDefaultUsers(ctx context.Context, userService domain.UserService) {
-	// 1. Create Ava (ID 1)
-	if _, err := userService.GetUserByUsername(ctx, "ava"); err != nil {
-		if _, err := userService.CreateUser(ctx, "ava", "password"); err == nil {
-			logger.Log().Info("Created default user: ava")
-		} else {
-			logger.Log().Error("Failed to create default user: ava", zap.Error(err))
-		}
+	defaultUsers := []struct {
+		username string
+		password string
+	}{
+		{"tom", "password123"},
+		{"jerry", "password123"},
 	}
-	
-	// 2. Create Mike (ID 2)
-	if _, err := userService.GetUserByUsername(ctx, "mike"); err != nil {
-		if _, err := userService.CreateUser(ctx, "mike", "password"); err == nil {
-			logger.Log().Info("Created default user: mike")
-		} else {
-			logger.Log().Error("Failed to create default user: mike", zap.Error(err))
+
+	for _, u := range defaultUsers {
+		if _, err := userService.GetUserByUsername(ctx, u.username); err != nil {
+			if _, err := userService.CreateUser(ctx, u.username, u.password); err == nil {
+				logger.Log().Info(fmt.Sprintf("Created default user: %s", u.username))
+			} else {
+				logger.Log().Error("Failed to create default user", zap.String("username", u.username), zap.Error(err))
+			}
 		}
 	}
 }
