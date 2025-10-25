@@ -1,127 +1,145 @@
-# 💬 ChatServer
-> **High-Performance Real-Time Group Chat Backend — Built in Go**
+# ChatServer
 
-ChatServer is a **Go-based backend** for real-time, authenticated group messaging.  
-It follows a **Hexagonal Architecture (Ports & Adapters)** to ensure scalability, testability, and a clean separation of concerns.
+**High-Performance Real-Time Group Chat Backend (Go)**
 
----
-
-## 🚀 Features
-
-- ⚡ Real-time WebSocket messaging  
-- 🧠 Clean, modular Hexagonal Architecture  
-- 🔐 Secure JWT authentication  
-- 💾 SQLite storage (no external DB needed)  
-- 🪵 Structured logging via Uber’s `zap`  
-- 🧩 Minimal dependencies, easy to extend  
-- 🌍 Cross-platform setup scripts (Linux, macOS, Windows)
+ChatServer is a backend system built with Go for secure, scalable, and real-time group communication.  
+It implements a clean, modular architecture ensuring clear boundaries, testability, and long-term maintainability.
 
 ---
 
-## 🧱 Project Structure
+## Features
 
-```bash
+- Real-time WebSocket communication  
+- JWT-based authentication  
+- Layered, clean architecture  
+- SQLite persistence (no external DB)  
+- Structured logging using Uber’s `zap`  
+- Minimal dependencies and cross-platform compatibility  
+
+---
+
+## Project Structure
+
+
 chatserver/
 ├── main.go
 ├── internal/
-│   ├── api/             # HTTP handlers, middleware, routes
-│   ├── auth/            # JWT management
-│   ├── config/          # Config loader
-│   ├── domain/          # Core business logic & entities
-│   ├── ports/sqlite/    # Persistence layer
-│   └── ws/              # WebSocket hub & client logic
-├── pkg/logger/          # Centralized zap logger
-├── tests/               # API & integration tests
-├── chatserver.db        # SQLite database (auto-generated)
-├── setup.sh             # Linux setup script
-├── setup_mac.sh         # macOS setup script
-└── setup.ps1            # Windows setup script
+│ ├── api/ # HTTP routes, handlers, middleware
+│ ├── auth/ # JWT generation and validation
+│ ├── config/ # Configuration loader
+│ ├── domain/ # Core business logic and entities
+│ ├── ports/sqlite/ # SQLite persistence adapter
+│ └── ws/ # WebSocket hub and client logic
+├── pkg/logger/ # Centralized logging utilities
+├── tests/ # Integration and API tests
+├── chatserver.db # Auto-generated SQLite database
+├── setup.sh # Linux setup script
+├── setup_mac.sh # macOS setup script
+└── setup.ps1 # Windows setup script
 
 
 
+---
 
-⚙️ Prerequisites
+## Prerequisites
 
-Before running setup, make sure you have:
+- Go 1.21 or higher  
+- Git installed and available in PATH  
+- Port `8080` free for the HTTP server  
 
-🐹 Go 1.21+ installed
+> No `.env` required — defaults are built into the configuration.
 
-🧰 Git installed
+---
 
-✅ Port 8080 free (default)
+## Quick Start
 
-No .env required — defaults are built-in.
+### Linux
 
-🧠 Quick Start
-🐧 Linux
+```bash
 chmod +x setup.sh
 ./setup.sh
 
-🍎 macOS
+
+
+---
+
+macOS
+
 chmod +x setup_mac.sh
 ./setup_mac.sh
 
-🪟 Windows (PowerShell)
+
+Windows (PowerShell)
+
 Set-ExecutionPolicy Bypass -Scope Process -Force
 .\setup.ps1
 
 
-These scripts automatically:
+Each script will:
+Verify Go and Git installations
 
-Check for Go & Git
-
-Install missing dependencies
+Download dependencies
 
 Build the binary
 
-Run the app (migrates DB automatically)
+Run the server
 
-Create Tom & Jerry as default users
+Create initial demo users: tom and jerry
 
-🌐 Once Running
 
-Server URL:
+Running the Server
+
+Once setup is complete:
 
 http://localhost:8080
 
 
-Default Users:
+Default Users
+| Username | Password |
+| -------- | -------- |
+| tom      | password |
+| jerry    | password |
 
-Username	Password
-tom	password
-jerry	password
-📡 Core API Endpoints
-Method	Endpoint	Description
-POST	/v1/users/register	Register a new user
-POST	/v1/users/login	Log in and get JWT
-GET	/v1/users	List users (requires JWT)
-GET	/v1/messages/history/:recipientID	Retrieve conversation
-POST	/v1/messages/p2p/:recipientID	Send direct message
-POST	/v1/messages/group/:groupID	Send group message
-GET	/ws	WebSocket connection endpoint
-🔐 Example — Login & Auth Test
-# Log in as Tom
-curl -s -X POST http://localhost:8080/v1/users/login \
+
+Core Endpoints
+
+| Method | Endpoint                            | Description                   |
+| ------ | ----------------------------------- | ----------------------------- |
+| POST   | `/v1/users/register`                | Register a new user           |
+| POST   | `/v1/users/login`                   | Authenticate and get JWT      |
+| GET    | `/v1/users`                         | List all users (JWT required) |
+| GET    | `/v1/messages/history/:recipientID` | Retrieve conversation history |
+| POST   | `/v1/messages/p2p/:recipientID`     | Send direct message           |
+| POST   | `/v1/messages/group/:groupID`       | Send group message            |
+| GET    | `/ws`                               | WebSocket connection endpoint |
+
+
+
+
+
+Example Usage
+
+curl -X POST http://localhost:8080/v1/users/login \
   -H "Content-Type: application/json" \
   -d '{"username": "tom", "password": "password"}'
 
 
 Response:
+{
+  "token": "eyJhbGciOi..."
+}
 
-{"token": "eyJhbGciOi..."}
 
 
-Use that token for all protected endpoints:
+Use the returned token for authorized requests:
 
 curl -H "Authorization: Bearer <token>" http://localhost:8080/v1/users
 
-⚡ WebSocket Usage
-
-Endpoint:
+WebSocket Connection
 
 ws://localhost:8080/ws?token=<JWT_TOKEN>
 
-Example using websocat
+Example using websocat:
 websocat "ws://localhost:8080/ws?token=<JWT_TOKEN>"
 
 
@@ -131,37 +149,49 @@ Incoming messages follow this format:
   "type": "group_message",
   "group_id": 1,
   "sender_id": 2,
-  "content": "ChatServer is alive!",
+  "content": "Hello world",
+  "MediaURL": "test_image.url"
   "timestamp": "2025-10-25T15:00:00Z"
 }
 
-🧪 Testing
 
-Run integration tests:
+Logs and Data
 
-pytest tests/
+| Resource | Path            | Description                          |
+| -------- | --------------- | ------------------------------------ |
+| Logs     | `logs/app.log`  | Structured logs (info, error, debug) |
+| Database | `chatserver.db` | SQLite data store (auto-created)     |
 
 
-Or use Postman / curl directly against the running server.
 
-🪵 Logs & Data
-Resource	Path	Notes
-Logs	logs/app.log	All runtime events
-Database	chatserver.db	Auto-created SQLite file
-🤝 Contributing
+Testing
+Run integration tests (example using pytest or Go test suite):
 
-Pull requests are welcome!
-For major changes, open an issue first to discuss what you’d like to add or modify.
+go test ./tests/...
 
-📜 License
+
+Contributing
+
+Contributions are welcome.
+For large changes, please open an issue first to discuss your proposal.
+
+
+License
 
 Licensed under the MIT License
 .
-Feel free to fork, use, and build upon it.
 
-💬 Support
+Maintainer
 
-If you find this project helpful, please ⭐ the repo on
-👉 GitHub — Emmanuel326/chatserver
+Author: Emmanuel
+Repository: github.com/Emmanuel326/chatserver
 
-Made with ❤️ in Go.
+
+
+
+
+
+
+
+
+
