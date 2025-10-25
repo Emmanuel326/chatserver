@@ -58,6 +58,7 @@ func RegisterRoutes(
 
 			// Message Send Endpoint (via API) - The target of our final test
 			secured.POST("/messages/group/:groupID", messageHandler.SendGroupMessage)
+			secured.POST("/messages/p2p/:recipientID", messageHandler.SendP2PMessage)
 
 			// Test Protected Endpoint
 			secured.GET("/test-auth", func(c *gin.Context) {

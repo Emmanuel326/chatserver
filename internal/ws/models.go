@@ -14,6 +14,7 @@ type Message struct {
 	RecipientID int64 `json:"recipient_id"` // 0 for broadcast/room messages
 	Type        domain.MessageType `json:"type"`
 	Content     string `json:"content"`
+	MediaURL    string     `json: "media_url"`
 	Timestamp   time.Time `json:"timestamp"`
 }
 

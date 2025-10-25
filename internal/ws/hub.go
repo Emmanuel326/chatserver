@@ -104,6 +104,7 @@ func (h *Hub) handleBroadcast(message *Message) {
 		RecipientID: message.RecipientID,
 		Type:        message.Type,
 		Content:     message.Content,
+		MediaURL:    message.MediaURL,
 		Timestamp:   time.Now(),
 	}
 
@@ -188,6 +189,7 @@ func (h *Hub) domainToWsMessage(dMsg *domain.Message) *Message {
         RecipientID: dMsg.RecipientID,
         Type:        dMsg.Type,
         Content:     dMsg.Content,
+	MediaURL:    dMsg.MediaURL,
         Timestamp:   dMsg.Timestamp,
         ID:          dMsg.ID, 
     }
@@ -201,4 +203,25 @@ func (h *Hub) BroadcastGroupMessage(groupID int64, message *domain.Message) {
     
     // Send the message into the hub's main broadcast channel for processing/routing
     h.Broadcast <- wsMsg
+}
+
+
+
+// BroadcastP2PMessage implements the domain.Hub interface.
+// It is called by the MessageService after a P2P message is saved.
+func (h *Hub) BroadcastP2PMessage(senderID int64, recipientID int64, message *domain.Message) {
+    // 1. Convert the domain message to the Hub's internal ws.Message type
+    wsMsg := h.domainToWsMessage(message)
+
+    // 2. Dispatch the message directly to the sender (for echo) and the recipient.
+    
+    // Send to sender (echo)
+    h.sendMessageToUser(senderID, wsMsg)
+
+    // Send to recipient (only if the recipient is not the sender)
+    if senderID != recipientID {
+        h.sendMessageToUser(recipientID, wsMsg)
+    }
+
+    log.Printf("P2P message (ID %d) from User %d dispatched to User %d.", wsMsg.ID, senderID, recipientID)
 }

@@ -9,26 +9,24 @@ import (
 
 // messageService is the concrete implementation of the MessageService interface.
 type messageService struct {
-	messageRepo MessageRepository
-	userRepo    UserRepository
+	messageRepo  MessageRepository
+	userRepo   UserRepository
 	groupRepo   GroupRepository
-	hub         Hub
+	hub        Hub
 }
 
 // NewMessageService creates a new instance of the MessageService.
 func NewMessageService(messageRepo MessageRepository, userRepo UserRepository, groupRepo GroupRepository, hub Hub) MessageService {
 	return &messageService{
-		messageRepo: messageRepo,
+		messageRepo:  messageRepo,
 		userRepo:    userRepo,
 		groupRepo:   groupRepo,
-		hub:         hub,
+		hub:           hub,
 	}
 }
 
 // Save implements the MessageService Save method, directly persisting the message.
-// This was needed because the MessageService interface expects this method.
 func (s *messageService) Save(ctx context.Context, message *Message) (*Message, error) {
-	// Proxies the request directly to the repository
 	return s.messageRepo.Save(ctx, message)
 }
 
@@ -37,12 +35,12 @@ func (s *messageService) GetConversationHistory(ctx context.Context, userID1, us
 	if limit <= 0 {
 		limit = 50 // Default limit
 	}
-	// FIX: s.messageRepo.FindConversationHistory now matches the interface
-	return s.messageRepo.FindConversationHistory(ctx, userID1, userID2, limit) 
+	return s.messageRepo.FindConversationHistory(ctx, userID1, userID2, limit)
 }
 
 // SendGroupMessage saves a message to the database and broadcasts it to all group members.
-func (s *messageService) SendGroupMessage(ctx context.Context, senderID int64, groupID int64, content string) (*Message, error) {
+// FIX: Updated signature to accept mediaURL
+func (s *messageService) SendGroupMessage(ctx context.Context, senderID int64, groupID int64, content string, mediaURL string) (*Message, error) {
 	// 1. Check if sender is a member of the group
 	memberIDs, err := s.groupRepo.FindMembersByGroupID(ctx, groupID)
 	if err != nil {
@@ -61,24 +59,83 @@ func (s *messageService) SendGroupMessage(ctx context.Context, senderID int64, g
 		return nil, errors.New("sender is not a member of this group")
 	}
 
-	// 2. Create the message struct
+	// 2. Determine Message Type
+	messageType := TextMessage
+	if mediaURL != "" {
+		messageType = ImageMessage
+	}
+    // IMPORTANT: Assuming the message is either text OR media, not both requiring different types.
+
+	// 3. Create the message struct
 	message := &Message{
-		SenderID:    senderID,
+		SenderID:   senderID,
 		RecipientID: groupID, // Recipient is the Group ID
-		Type:        "group",
+		Type:        messageType,
 		Content:     content,
+                MediaURL:   mediaURL, 
 		Timestamp:   time.Now(),
 	}
+    
+    // 4. Input Validation (Safety Check)
+    if message.Content == "" && message.MediaURL == "" {
+        return nil, errors.New("message cannot be empty (no content or media URL provided)")
+    }
 
-	// 3. Save the message
-	// FIX: s.messageRepo.Save now matches the corrected repository interface
-	savedMessage, err := s.messageRepo.Save(ctx, message) 
+
+	// 5. Save the message
+	savedMessage, err := s.messageRepo.Save(ctx, message)
 	if err != nil {
 		return nil, fmt.Errorf("failed to save message: %w", err)
 	}
 
-	// 4. Broadcast the message to all group members (WebSocket Hub)
+	// 6. Broadcast the message to all group members (WebSocket Hub)
 	s.hub.BroadcastGroupMessage(groupID, savedMessage)
+
+	return savedMessage, nil
+}
+
+
+// SendP2PMessage saves a message to the database and broadcasts it to the recipient and sender.
+func (s *messageService) SendP2PMessage(ctx context.Context, senderID int64, recipientID int64, content string, mediaURL string) (*Message, error) {
+	// 1. Check if recipient user exists
+	_, err := s.userRepo.GetByID(ctx, recipientID)
+	if err != nil {
+		if errors.Is(err, errors.New("user not found")) { // Assuming FindByID returns a "user not found" error
+			return nil, errors.New("recipient user not found")
+		}
+		return nil, fmt.Errorf("failed to check recipient existence: %w", err)
+	}
+
+	// 2. Determine Message Type
+	messageType := TextMessage
+	if mediaURL != "" {
+		messageType = ImageMessage
+	}
+
+	// 3. Create the message struct
+	message := &Message{
+		SenderID:    senderID,
+		RecipientID: recipientID, // Recipient is the User ID
+		Type:        messageType,
+		Content:     content,
+		MediaURL:    mediaURL,
+		Timestamp:   time.Now(),
+	}
+
+	// 4. Input Validation (Safety Check)
+	if message.Content == "" && message.MediaURL == "" {
+		return nil, errors.New("message cannot be empty (no content or media URL provided)")
+	}
+
+	// 5. Save the message
+	savedMessage, err := s.messageRepo.Save(ctx, message)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save message: %w", err)
+	}
+
+	// 6. Broadcast the message to the sender and recipient (WebSocket Hub)
+	// NOTE: We need to define BroadcastP2PMessage in the Hub interface next!
+	s.hub.BroadcastP2PMessage(senderID, recipientID, savedMessage)
 
 	return savedMessage, nil
 }
