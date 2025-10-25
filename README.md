@@ -51,10 +51,21 @@ chatserver/
 
 ---
 
+
+
 ## Quick Start
+
+
+
 
 ### Linux
 
+
+# 1. Clone the repository
+git clone https://github.com/Emmanuel326/chatserver.git
+
+# 2. Move into the project directory
+cd chatserver
 ```bash
 chmod +x setup.sh
 ./setup.sh
