@@ -50,18 +50,19 @@ type ApplicationServices struct {
 func createDefaultUsers(ctx context.Context, userService domain.UserService) {
 	defaultUsers := []struct {
 		username string
+		email    string
 		password string
 	}{
-		{"tom", "password123"},
-		{"jerry", "password123"},
+		{"tom", "tom@temp.com", "password123"},
+		{"jerry", "jerry@temp.com", "password123"},
 	}
 
 	for _, u := range defaultUsers {
 		if _, err := userService.GetUserByUsername(ctx, u.username); err != nil {
 			if _, err := userService.CreateUser(ctx, u.username, u.password); err == nil {
-				logger.Log().Info(fmt.Sprintf("Created default user: %s", u.username))
+				logger.Log().Info(fmt.Sprintf("✅ Created default user: %s (%s)", u.username, u.email))
 			} else {
-				logger.Log().Error("Failed to create default user", zap.String("username", u.username), zap.Error(err))
+				logger.Log().Error("❌ Failed to create default user", zap.String("username", u.username), zap.Error(err))
 			}
 		}
 	}
