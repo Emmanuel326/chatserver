@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/Emmanuel326/chatserver/internal/domain"
 	"github.com/gorilla/websocket"
 )
 
