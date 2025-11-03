@@ -68,3 +68,61 @@ func (r *messageRepository) FindConversationHistory(ctx context.Context, userID1
 
 	return messages, nil
 }
+
+// GetRecentConversations returns the latest message for every unique conversation
+// a user has participated in (both P2P and Group chats).
+func (r *messageRepository) GetRecentConversations(ctx context.Context, userID int64) ([]*domain.Message, error) {
+	query := `
+		-- CTE for groups the user is a member of
+		WITH user_groups AS (
+		  SELECT group_id FROM group_members WHERE user_id = ?
+		),
+		-- All relevant messages for the user, with a generated conversation ID
+		messages_with_conv_id AS (
+		  SELECT
+			m.id, m.sender_id, m.recipient_id, m.type, m.content, m.media_url, m.timestamp,
+			CASE
+			  -- Group message where user is a member
+			  WHEN g.id IS NOT NULL AND m.recipient_id IN (SELECT group_id FROM user_groups)
+				THEN 'group_' || m.recipient_id
+			  -- P2P message sent by user
+			  WHEN g.id IS NULL AND m.sender_id = ?
+				THEN 'user_' || m.recipient_id
+			  -- P2P message received by user
+			  WHEN g.id IS NULL AND m.recipient_id = ?
+				THEN 'user_' || m.sender_id
+			  ELSE NULL
+			END AS conv_id
+		  FROM messages m
+		  LEFT JOIN groups g ON m.recipient_id = g.id
+		  WHERE
+			-- It's a group message and the user is a member
+			(g.id IS NOT NULL AND m.recipient_id IN (SELECT group_id FROM user_groups))
+			OR
+			-- or it's a P2P message involving the user
+			(g.id IS NULL AND (m.sender_id = ? OR m.recipient_id = ?))
+		),
+		-- Rank messages within each conversation by timestamp
+		ranked_messages AS (
+		  SELECT
+			*,
+			ROW_NUMBER() OVER(PARTITION BY conv_id ORDER BY timestamp DESC) as rn
+		  FROM messages_with_conv_id
+		  WHERE conv_id IS NOT NULL
+		)
+		-- Select only the latest message from each conversation
+		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp
+		FROM ranked_messages
+		WHERE rn = 1
+		ORDER BY timestamp DESC;
+	`
+
+	messages := []*domain.Message{}
+	err := r.db.SelectContext(ctx, &messages, query, userID, userID, userID, userID, userID)
+	if err != nil {
+		log.Printf("Error finding recent conversations: %v", err)
+		return nil, err
+	}
+
+	return messages, nil
+}
