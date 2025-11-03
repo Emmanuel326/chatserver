@@ -69,6 +69,29 @@ func (r *messageRepository) FindConversationHistory(ctx context.Context, userID1
 	return messages, nil
 }
 
+// GetGroupConversationHistory retrieves the message history for a group.
+func (r *messageRepository) GetGroupConversationHistory(ctx context.Context, groupID int64, limit int) ([]*domain.Message, error) {
+	query := `
+		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp FROM messages
+		WHERE recipient_id = ?
+		ORDER BY timestamp DESC
+		LIMIT ?;
+	`
+	messages := []*domain.Message{}
+	err := r.db.SelectContext(ctx, &messages, query, groupID, limit)
+	if err != nil {
+		log.Printf("Error finding group conversation history: %v", err)
+		return nil, err
+	}
+
+	// Messages were fetched in DESC order, reverse them for chronological display
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
+}
+
 // GetRecentConversations returns the latest message for every unique conversation
 // a user has participated in (both P2P and Group chats).
 func (r *messageRepository) GetRecentConversations(ctx context.Context, userID int64) ([]*domain.Message, error) {

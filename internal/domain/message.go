@@ -41,6 +41,7 @@ type Hub interface {
 type MessageRepository interface {
 	Save(ctx context.Context, message *Message) (*Message, error)
 	FindConversationHistory(ctx context.Context, userID1, userID2 int64, limit int) ([]*Message, error)
+	GetGroupConversationHistory(ctx context.Context, groupID int64, limit int) ([]*Message, error)
 	GetRecentConversations(ctx context.Context, userID int64) ([]*Message, error)
 }
 
