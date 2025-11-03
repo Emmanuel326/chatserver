@@ -133,7 +133,7 @@ func (h *Hub) handleBroadcast(message *Message) {
 		Type:        message.Type,
 		Content:     message.Content,
 		MediaURL:    message.MediaURL,
-		Timestamp:   time.Now(),
+		Timestamp:   message.Timestamp,
 	}
 
 	// 2. Persistence (Always Persist First)
