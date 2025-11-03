@@ -15,6 +15,18 @@ const (
 	TypingMessage MessageType = "typing"
 )
 
+// MessageStatus defines the delivery status of a message.
+type MessageStatus string
+
+const (
+	// Sent means the message was sent to an online user or is a group message.
+	MessageSent MessageStatus = "SENT"
+	// Pending means the message is queued for an offline user.
+	MessagePending MessageStatus = "PENDING"
+	// Delivered means a pending message has been successfully delivered.
+	MessageDelivered MessageStatus = "DELIVERED"
+)
+
 // Message is the core data model for a chat message.
 type Message struct {
 	ID          int64      `json:"id" db:"id"`
@@ -24,6 +36,7 @@ type Message struct {
         Content    string       `json:"content" db:"content"`
 	MediaURL   string     `json:"media_url" db:"media_url"` 
 	Timestamp   time.Time   `json:"timestamp" db:"timestamp"`
+	Status      MessageStatus `json:"status" db:"status"`
 }
 
 // ---------------------------------------------

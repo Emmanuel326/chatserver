@@ -76,5 +76,14 @@ func Migrate(db *sqlx.DB) {
         log.Printf("INFO: Could not run ALTER TABLE (media_url). This is often normal if column already exists: %v", err)
     }
 
+    // 3. ALTER TABLE for adding the new status column
+    alterStatusQuery := `
+        ALTER TABLE messages ADD COLUMN status TEXT NOT NULL DEFAULT 'SENT';
+    `
+    _, err = db.Exec(alterStatusQuery)
+    if err != nil {
+        log.Printf("INFO: Could not run ALTER TABLE (status). This is often normal if column already exists: %v", err)
+    }
+
 	log.Println(" Database schema migrated successfully (all core tables created/exists).")
 }
