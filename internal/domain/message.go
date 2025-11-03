@@ -67,7 +67,7 @@ type MessageRepository interface {
 // MessageService defines the business operations related to messages.
 type MessageService interface {
 	Save(ctx context.Context, message *Message) (*Message, error)
-	GetConversationHistory(ctx context.Context, userID1, userID2 int64, limit int) ([]*Message, error)
+	GetConversationHistory(ctx context.Context, userID1, userID2 int64, limit int, beforeID int64) ([]*Message, error)
 	GetRecentConversations(ctx context.Context, userID int64) ([]*Message, error)
 	GetPendingMessages(ctx context.Context, userID int64) ([]*Message, error)
 	MarkMessagesAsDelivered(ctx context.Context, messageIDs []int64) error

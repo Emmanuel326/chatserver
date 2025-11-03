@@ -31,11 +31,11 @@ func (s *messageService) Save(ctx context.Context, message *Message) (*Message, 
 }
 
 // GetConversationHistory retrieves a list of messages between two users (P2P).
-func (s *messageService) GetConversationHistory(ctx context.Context, userID1, userID2 int64, limit int) ([]*Message, error) {
+func (s *messageService) GetConversationHistory(ctx context.Context, userID1, userID2 int64, limit int, beforeID int64) ([]*Message, error) {
 	if limit <= 0 {
 		limit = 50 // Default limit
 	}
-	return s.messageRepo.FindConversationHistory(ctx, userID1, userID2, limit)
+	return s.messageRepo.FindConversationHistory(ctx, userID1, userID2, limit, beforeID)
 }
 
 // GetRecentConversations retrieves the latest message from each of the user's conversations.

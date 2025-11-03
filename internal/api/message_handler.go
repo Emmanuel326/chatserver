@@ -55,10 +55,13 @@ func (h *MessageHandler) GetConversationHistory(c *gin.Context) {
 	if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
 		limit = parsedLimit
 	}
+
+	beforeIDStr := c.DefaultQuery("before_id", "0")
+	beforeID, _ := strconv.ParseInt(beforeIDStr, 10, 64)
 	
 	// 4. Call Domain Service to retrieve history
 	// FIX: Use request context instead of context.Background()
-	messages, err := h.MessageService.GetConversationHistory(c.Request.Context(), senderID, recipientID, limit)
+	messages, err := h.MessageService.GetConversationHistory(c.Request.Context(), senderID, recipientID, limit, beforeID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve message history"})
 		return
