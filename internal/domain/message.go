@@ -52,6 +52,7 @@ type MessageRepository interface {
 type MessageService interface {
 	Save(ctx context.Context, message *Message) (*Message, error)
 	GetConversationHistory(ctx context.Context, userID1, userID2 int64, limit int) ([]*Message, error)
+	GetRecentConversations(ctx context.Context, userID int64) ([]*Message, error)
 	
 	// FIX: Update interface signature to match the implementation in message_service.go
 	SendGroupMessage(ctx context.Context, senderID int64, groupID int64, content string, mediaURL string) (*Message, error)

@@ -38,6 +38,11 @@ func (s *messageService) GetConversationHistory(ctx context.Context, userID1, us
 	return s.messageRepo.FindConversationHistory(ctx, userID1, userID2, limit)
 }
 
+// GetRecentConversations retrieves the latest message from each of the user's conversations.
+func (s *messageService) GetRecentConversations(ctx context.Context, userID int64) ([]*Message, error) {
+	return s.messageRepo.GetRecentConversations(ctx, userID)
+}
+
 // SendGroupMessage saves a message to the database and broadcasts it to all group members.
 // FIX: Updated signature to accept mediaURL
 func (s *messageService) SendGroupMessage(ctx context.Context, senderID int64, groupID int64, content string, mediaURL string) (*Message, error) {
