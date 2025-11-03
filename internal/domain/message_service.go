@@ -44,7 +44,7 @@ func (s *messageService) GetRecentConversations(ctx context.Context, userID int6
 }
 
 // GetPendingMessages retrieves all messages for a user marked as 'PENDING'.
-func (s *messageService) GetPendingMessages(ctx context..Context, userID int64) ([]*Message, error) {
+func (s *messageService) GetPendingMessages(ctx context.Context, userID int64) ([]*Message, error) {
 	return s.messageRepo.FindPendingForUser(ctx, userID)
 }
 
