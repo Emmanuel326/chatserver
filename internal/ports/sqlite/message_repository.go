@@ -26,8 +26,8 @@ func (r *messageRepository) Save(ctx context.Context, message *domain.Message) (
 	}
 
 	query := `
-		INSERT INTO messages (sender_id, recipient_id, type, content, media_url, timestamp)
-		VALUES (:sender_id, :recipient_id, :type, :content, :media_url, :timestamp);
+		INSERT INTO messages (sender_id, recipient_id, type, content, media_url, timestamp, status)
+		VALUES (:sender_id, :recipient_id, :type, :content, :media_url, :timestamp, :status);
 	`
     // FIX: NamedExecContext automatically maps message.MediaURL to :media_url
 	res, err := r.db.NamedExecContext(ctx, query, message)
@@ -48,7 +48,7 @@ func (r *messageRepository) Save(ctx context.Context, message *domain.Message) (
 func (r *messageRepository) FindConversationHistory(ctx context.Context, userID1, userID2 int64, limit int) ([]*domain.Message, error) {
 	// Query to find messages where (sender=1 AND recipient=2) OR (sender=2 AND recipient=1)
 	query := `
-		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp FROM messages
+		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp, status FROM messages
         -- FIX: Added media_url to SELECT list
 		WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)
 		ORDER BY timestamp DESC
@@ -72,7 +72,7 @@ func (r *messageRepository) FindConversationHistory(ctx context.Context, userID1
 // GetGroupConversationHistory retrieves the message history for a group.
 func (r *messageRepository) GetGroupConversationHistory(ctx context.Context, groupID int64, limit int) ([]*domain.Message, error) {
 	query := `
-		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp FROM messages
+		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp, status FROM messages
 		WHERE recipient_id = ?
 		ORDER BY timestamp DESC
 		LIMIT ?;
@@ -103,7 +103,7 @@ func (r *messageRepository) GetRecentConversations(ctx context.Context, userID i
 		-- All relevant messages for the user, with a generated conversation ID
 		messages_with_conv_id AS (
 		  SELECT
-			m.id, m.sender_id, m.recipient_id, m.type, m.content, m.media_url, m.timestamp,
+			m.id, m.sender_id, m.recipient_id, m.type, m.content, m.media_url, m.timestamp, m.status,
 			CASE
 			  -- Group message where user is a member
 			  WHEN g.id IS NOT NULL AND m.recipient_id IN (SELECT group_id FROM user_groups)
@@ -134,7 +134,7 @@ func (r *messageRepository) GetRecentConversations(ctx context.Context, userID i
 		  WHERE conv_id IS NOT NULL
 		)
 		-- Select only the latest message from each conversation
-		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp
+		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp, status
 		FROM ranked_messages
 		WHERE rn = 1
 		ORDER BY timestamp DESC;
@@ -148,4 +148,40 @@ func (r *messageRepository) GetRecentConversations(ctx context.Context, userID i
 	}
 
 	return messages, nil
+}
+
+// FindPendingForUser retrieves all messages for a user with 'PENDING' status.
+func (r *messageRepository) FindPendingForUser(ctx context.Context, userID int64) ([]*domain.Message, error) {
+	query := `
+		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp, status
+		FROM messages
+		WHERE recipient_id = ? AND status = ?
+		ORDER BY timestamp ASC;
+	`
+	messages := []*domain.Message{}
+	err := r.db.SelectContext(ctx, &messages, query, userID, domain.MessagePending)
+	if err != nil {
+		log.Printf("Error finding pending messages for user %d: %v", userID, err)
+		return nil, err
+	}
+	return messages, nil
+}
+
+// UpdateStatus performs a bulk update on the status of given message IDs.
+func (r *messageRepository) UpdateStatus(ctx context.Context, messageIDs []int64, status domain.MessageStatus) error {
+	if len(messageIDs) == 0 {
+		return nil // Nothing to update
+	}
+
+	query, args, err := sqlx.In("UPDATE messages SET status = ? WHERE id IN (?);", status, messageIDs)
+	if err != nil {
+		return err
+	}
+
+	query = r.db.Rebind(query)
+	_, err = r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		log.Printf("Error updating message statuses: %v", err)
+	}
+	return err
 }

@@ -43,6 +43,19 @@ func (s *messageService) GetRecentConversations(ctx context.Context, userID int6
 	return s.messageRepo.GetRecentConversations(ctx, userID)
 }
 
+// GetPendingMessages retrieves all messages for a user marked as 'PENDING'.
+func (s *messageService) GetPendingMessages(ctx context..Context, userID int64) ([]*Message, error) {
+	return s.messageRepo.FindPendingForUser(ctx, userID)
+}
+
+// MarkMessagesAsDelivered updates the status of a list of messages to 'DELIVERED'.
+func (s *messageService) MarkMessagesAsDelivered(ctx context.Context, messageIDs []int64) error {
+	if len(messageIDs) == 0 {
+		return nil
+	}
+	return s.messageRepo.UpdateStatus(ctx, messageIDs, MessageDelivered)
+}
+
 // SendGroupMessage saves a message to the database and broadcasts it to all group members.
 // FIX: Updated signature to accept mediaURL
 func (s *messageService) SendGroupMessage(ctx context.Context, senderID int64, groupID int64, content string, mediaURL string) (*Message, error) {

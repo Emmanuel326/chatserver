@@ -43,6 +43,8 @@ type MessageRepository interface {
 	FindConversationHistory(ctx context.Context, userID1, userID2 int64, limit int) ([]*Message, error)
 	GetGroupConversationHistory(ctx context.Context, groupID int64, limit int) ([]*Message, error)
 	GetRecentConversations(ctx context.Context, userID int64) ([]*Message, error)
+	FindPendingForUser(ctx context.Context, userID int64) ([]*Message, error)
+	UpdateStatus(ctx context.Context, messageIDs []int64, status MessageStatus) error
 }
 
 // ---------------------------------------------
@@ -54,6 +56,8 @@ type MessageService interface {
 	Save(ctx context.Context, message *Message) (*Message, error)
 	GetConversationHistory(ctx context.Context, userID1, userID2 int64, limit int) ([]*Message, error)
 	GetRecentConversations(ctx context.Context, userID int64) ([]*Message, error)
+	GetPendingMessages(ctx context.Context, userID int64) ([]*Message, error)
+	MarkMessagesAsDelivered(ctx context.Context, messageIDs []int64) error
 	
 	// FIX: Update interface signature to match the implementation in message_service.go
 	SendGroupMessage(ctx context.Context, senderID int64, groupID int64, content string, mediaURL string) (*Message, error)
