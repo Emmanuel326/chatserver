@@ -9,9 +9,10 @@ import (
 type MessageType string
 
 const (
-	TextMessage MessageType = "text"
-	ImageMessage MessageType = "image"
+	TextMessage   MessageType = "text"
+	ImageMessage  MessageType = "image"
 	SystemMessage MessageType = "system"
+	TypingMessage MessageType = "typing"
 )
 
 // Message is the core data model for a chat message.
