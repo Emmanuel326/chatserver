@@ -44,18 +44,30 @@ func (r *messageRepository) Save(ctx context.Context, message *domain.Message) (
 	return message, nil
 }
 
-// FindConversationHistory retrieves the message history between two users.
-func (r *messageRepository) FindConversationHistory(ctx context.Context, userID1, userID2 int64, limit int) ([]*domain.Message, error) {
-	// Query to find messages where (sender=1 AND recipient=2) OR (sender=2 AND recipient=1)
+// FindConversationHistory retrieves the message history between two users with pagination.
+func (r *messageRepository) FindConversationHistory(ctx context.Context, userID1, userID2 int64, limit int, beforeID int64) ([]*domain.Message, error) {
+	// Base query
 	query := `
 		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp, status FROM messages
-        -- FIX: Added media_url to SELECT list
-		WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)
-		ORDER BY timestamp DESC
+		WHERE ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))
+	`
+	args := []interface{}{userID1, userID2, userID2, userID1}
+
+	// Add pagination condition
+	if beforeID > 0 {
+		query += " AND id < ?"
+		args = append(args, beforeID)
+	}
+
+	// Add ordering and limit
+	query += `
+		ORDER BY id DESC
 		LIMIT ?;
 	`
+	args = append(args, limit)
+
 	messages := []*domain.Message{}
-	err := r.db.SelectContext(ctx, &messages, query, userID1, userID2, userID2, userID1, limit)
+	err := r.db.SelectContext(ctx, &messages, query, args...)
 	if err != nil {
 		log.Printf("Error finding conversation history: %v", err)
 		return nil, err
