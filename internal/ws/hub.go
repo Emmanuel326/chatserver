@@ -94,14 +94,44 @@ func (h *Hub) deliverPendingMessages(client *Client) {
 	var deliveredIDs []int64
 	for _, msg := range pendingMessages {
 		wsMsg := h.domainToWsMessage(msg)
-		select {
-		case client.Send <- wsMsg:
+
+		// Safely send the message by checking if the client is still connected under a lock.
+		// This prevents a panic if the client disconnects and its channel is closed concurrently.
+		sent := func() bool {
+			h.mu.RLock()
+			defer h.mu.RUnlock()
+
+			// First, verify the client instance is still in the active clients map.
+			if connections, ok := h.clients[client.UserID]; ok {
+				isStillConnected := false
+				for _, c := range connections {
+					if c == client {
+						isStillConnected = true
+						break
+					}
+				}
+				if !isStillConnected {
+					return false // Client has been unregistered.
+				}
+			} else {
+				return false // User has no connections.
+			}
+
+			// If client is still connected, attempt a non-blocking send.
+			select {
+			case client.Send <- wsMsg:
+				return true // Success.
+			default:
+				return false // Buffer is full.
+			}
+		}()
+
+		if sent {
 			deliveredIDs = append(deliveredIDs, msg.ID)
-		default:
-			// If the client's send buffer is full, it's a transient issue.
-			// The messages will remain 'PENDING' and will be retried on the next connection.
-			log.Printf("Client send buffer full for User %d. Aborting pending message delivery.", client.UserID)
-			// Break the loop and only update the status for messages that were actually sent.
+		} else {
+			// If the message could not be sent (client disconnected or buffer full),
+			// abort delivery to ensure messages aren't marked as delivered incorrectly.
+			log.Printf("Client for User %d disconnected or buffer full. Aborting pending message delivery.", client.UserID)
 			goto updateStatus
 		}
 	}
@@ -261,15 +291,18 @@ func (h *Hub) isUserOnline(userID int64) bool {
 func (h *Hub) sendMessageToUser(userID int64, message *Message) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	
+
 	if connections, ok := h.clients[userID]; ok {
 		for _, client := range connections {
 			select {
 			case client.Send <- message:
 				// Message sent successfully
 			default:
-				// If the client's send buffer is full, it's likely stuck. Unregister it.
-				h.handleUnregister(client)
+				// If the client's send buffer is full, it's likely stuck.
+				// Unregister it in a new goroutine to avoid deadlocking the hub's Run loop.
+				go func(c *Client) {
+					h.Unregister <- c
+				}(client)
 			}
 		}
 	}
