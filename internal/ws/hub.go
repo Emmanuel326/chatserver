@@ -17,6 +17,9 @@ type Hub struct {
 	// Inbound messages from the clients
 	Broadcast chan *Message
 	
+	// Inbound typing notifications from clients
+	Typing chan *Message
+
 	// Client registration/unregistration channels
 	Register chan *Client
 	Unregister chan *Client
@@ -32,9 +35,10 @@ type Hub struct {
 // NewHub creates and returns a new Hub, injected with MessageService and GroupService.
 func NewHub(messageService domain.MessageService, groupService domain.GroupService) *Hub {
 	return &Hub{
-		Broadcast: make(chan *Message),
-		Register: make(chan *Client),
+		Broadcast:  make(chan *Message),
+		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
+		Typing:     make(chan *Message),
 		clients: make(map[int64][]*Client),
 		// FIX 1: Use exported field names in struct literal
 		MessageService: messageService, 
@@ -53,6 +57,8 @@ func (h *Hub) Run() {
 			h.handleUnregister(client)
 		case message := <-h.Broadcast:
 			h.handleBroadcast(message)
+		case notification := <-h.Typing:
+			h.handleTypingNotification(notification)
 		}
 	}
 }
@@ -93,6 +99,28 @@ func (h *Hub) handleUnregister(client *Client) {
 		// Close the client's send channel to stop its write pump
 		close(client.Send)
 		log.Printf("Client unregistered. UserID: %d. Remaining connections for user: %d", userID, len(h.clients[userID]))
+	}
+}
+
+// handleTypingNotification broadcasts a typing indicator to relevant users without persisting it.
+func (h *Hub) handleTypingNotification(message *Message) {
+	// A typing notification is transient and should not be persisted.
+	// We determine if the recipient is a group or a single user and forward accordingly.
+
+	members, err := h.GroupService.GetMembers(context.Background(), message.RecipientID)
+
+	if err == nil && len(members) > 0 {
+		// Case A: Group Typing Notification.
+		// Broadcast to all group members except the sender.
+		for _, memberID := range members {
+			if memberID != message.SenderID {
+				h.sendMessageToUser(memberID, message)
+			}
+		}
+	} else {
+		// Case B: P2P Typing Notification.
+		// Send only to the single recipient.
+		h.sendMessageToUser(message.RecipientID, message)
 	}
 }
 

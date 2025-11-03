@@ -64,8 +64,14 @@ func (c *Client) readPump() {
         message.Timestamp = time.Now()
 		// --- FIX END ---
 
-		// Send the message to the Hub's broadcast channel
-		c.Hub.Broadcast <- &message // Send the pointer to the message
+		// Route message to appropriate hub channel based on its type
+		if message.Type == domain.TypingMessage {
+			// Typing notifications are transient and not persisted
+			c.Hub.Typing <- &message
+		} else {
+			// Other messages are persisted and broadcast
+			c.Hub.Broadcast <- &message
+		}
 	}
 }
 
