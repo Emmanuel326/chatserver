@@ -15,12 +15,14 @@ const defaultHistoryLimit = 50
 // MessageHandler holds dependencies for message-related API endpoints.
 type MessageHandler struct {
 	MessageService domain.MessageService
+	GroupService   domain.GroupService
 }
 
 // NewMessageHandler creates a new handler instance.
-func NewMessageHandler(messageService domain.MessageService) *MessageHandler {
+func NewMessageHandler(messageService domain.MessageService, groupService domain.GroupService) *MessageHandler {
 	return &MessageHandler{
 		MessageService: messageService,
+		GroupService:   groupService,
 	}
 }
 
@@ -200,4 +202,66 @@ func (h *MessageHandler) SendP2PMessage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "P2P message sent successfully"})
+}
+
+// GetGroupHistoryHandler retrieves the message history for a specific group.
+// GET /v1/groups/:groupID/messages
+func (h *MessageHandler) GetGroupHistoryHandler(c *gin.Context) {
+	// 1. Get Authenticated User ID
+	userID, exists := middleware.GetUserIDFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed or user ID missing"})
+		return
+	}
+
+	// 2. Get Group ID from URL path
+	groupIDStr := c.Param("groupID")
+	groupID, err := strconv.ParseInt(groupIDStr, 10, 64)
+	if err != nil || groupID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid group ID"})
+		return
+	}
+
+	// 3. Authorization Check: Ensure user is a member of the group
+	members, err := h.GroupService.GetMembers(c.Request.Context(), groupID)
+	if err != nil {
+		// This could be because the group doesn't exist, or a DB error.
+		c.JSON(http.StatusNotFound, gin.H{"error": "Group not found or error checking membership"})
+		return
+	}
+
+	isMember := false
+	for _, memberID := range members {
+		if memberID == userID {
+			isMember = true
+			break
+		}
+	}
+	if !isMember {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You are not a member of this group"})
+		return
+	}
+
+	// 4. Get Optional Limit and BeforeID Query Parameters
+	limit := defaultHistoryLimit
+	limitStr := c.DefaultQuery("limit", strconv.Itoa(defaultHistoryLimit))
+	if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+		limit = parsedLimit
+	}
+
+	beforeIDStr := c.DefaultQuery("before_id", "0")
+	beforeID, _ := strconv.ParseInt(beforeIDStr, 10, 64)
+
+	// 5. Call Domain Service to retrieve history
+	messages, err := h.MessageService.GetGroupConversationHistory(c.Request.Context(), groupID, limit, beforeID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve group message history"})
+		return
+	}
+
+	// 6. Success Response
+	c.JSON(http.StatusOK, gin.H{
+		"messages": messages,
+		"count":    len(messages),
+	})
 }

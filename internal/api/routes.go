@@ -24,7 +24,7 @@ func RegisterRoutes(
 	// NOTE: We assume these constructors exist in internal/api/
 	userHandler := NewUserHandler(userService, jwtManager)
 	wsHandler := NewWSHandler(hub, jwtManager)
-	messageHandler := NewMessageHandler(messageService)
+	messageHandler := NewMessageHandler(messageService, groupService)
 	groupHandler := NewGroupHandler(groupService)
 
 	// --- WebSocket Route ---
@@ -58,6 +58,7 @@ func RegisterRoutes(
 			secured.POST("/groups/:groupID/members", groupHandler.AddMember)
 			// ADDED: Missing GetMembers route for completeness
 			secured.GET("/groups/:groupID/members", groupHandler.GetMembers)
+			secured.GET("/groups/:groupID/messages", messageHandler.GetGroupHistoryHandler)
 
 			// Message Send Endpoint (via API) - The target of our final test
 			secured.POST("/messages/group/:groupID", messageHandler.SendGroupMessage)

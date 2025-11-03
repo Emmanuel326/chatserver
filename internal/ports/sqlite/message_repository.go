@@ -82,15 +82,26 @@ func (r *messageRepository) FindConversationHistory(ctx context.Context, userID1
 }
 
 // GetGroupConversationHistory retrieves the message history for a group.
-func (r *messageRepository) GetGroupConversationHistory(ctx context.Context, groupID int64, limit int) ([]*domain.Message, error) {
+func (r *messageRepository) GetGroupConversationHistory(ctx context.Context, groupID int64, limit int, beforeID int64) ([]*domain.Message, error) {
 	query := `
 		SELECT id, sender_id, recipient_id, type, content, media_url, timestamp, status FROM messages
 		WHERE recipient_id = ?
-		ORDER BY timestamp DESC
+	`
+	args := []interface{}{groupID}
+
+	if beforeID > 0 {
+		query += " AND id < ?"
+		args = append(args, beforeID)
+	}
+
+	query += `
+		ORDER BY id DESC
 		LIMIT ?;
 	`
+	args = append(args, limit)
+
 	messages := []*domain.Message{}
-	err := r.db.SelectContext(ctx, &messages, query, groupID, limit)
+	err := r.db.SelectContext(ctx, &messages, query, args...)
 	if err != nil {
 		log.Printf("Error finding group conversation history: %v", err)
 		return nil, err

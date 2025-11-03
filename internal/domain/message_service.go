@@ -38,6 +38,14 @@ func (s *messageService) GetConversationHistory(ctx context.Context, userID1, us
 	return s.messageRepo.FindConversationHistory(ctx, userID1, userID2, limit, beforeID)
 }
 
+// GetGroupConversationHistory retrieves a list of messages for a group.
+func (s *messageService) GetGroupConversationHistory(ctx context.Context, groupID int64, limit int, beforeID int64) ([]*Message, error) {
+	if limit <= 0 {
+		limit = 50 // Default limit
+	}
+	return s.messageRepo.GetGroupConversationHistory(ctx, groupID, limit, beforeID)
+}
+
 // GetRecentConversations retrieves the latest message from each of the user's conversations.
 func (s *messageService) GetRecentConversations(ctx context.Context, userID int64) ([]*Message, error) {
 	return s.messageRepo.GetRecentConversations(ctx, userID)
