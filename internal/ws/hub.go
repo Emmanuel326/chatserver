@@ -63,16 +63,57 @@ func (h *Hub) Run() {
 	}
 }
 
-// handleRegister adds a new client connection to the hub's map.
+// handleRegister adds a new client connection to the hub's map and triggers pending message delivery.
 func (h *Hub) handleRegister(client *Client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	
 	userID := client.UserID
 	h.clients[userID] = append(h.clients[userID], client)
 	log.Printf("Client registered. UserID: %d. Total connections for user: %d", userID, len(h.clients[userID]))
+	h.mu.Unlock()
 
 	client.Send <- NewSystemMessage("Welcome to the chat server.")
+
+	// Launch a goroutine to fetch and deliver any messages that were sent while the user was offline.
+	go h.deliverPendingMessages(client)
+}
+
+// deliverPendingMessages fetches and sends pending messages to a newly connected client.
+func (h *Hub) deliverPendingMessages(client *Client) {
+	// 1. Fetch pending messages from the service layer.
+	pendingMessages, err := h.MessageService.GetPendingMessages(context.Background(), client.UserID)
+	if err != nil {
+		log.Printf("Error fetching pending messages for User %d: %v", client.UserID, err)
+		return
+	}
+
+	if len(pendingMessages) == 0 {
+		return
+	}
+	log.Printf("Delivering %d pending messages to User %d", len(pendingMessages), client.UserID)
+
+	// 2. Send each pending message and collect the IDs of those successfully sent.
+	var deliveredIDs []int64
+	for _, msg := range pendingMessages {
+		wsMsg := h.domainToWsMessage(msg)
+		select {
+		case client.Send <- wsMsg:
+			deliveredIDs = append(deliveredIDs, msg.ID)
+		default:
+			// If the client's send buffer is full, it's a transient issue.
+			// The messages will remain 'PENDING' and will be retried on the next connection.
+			log.Printf("Client send buffer full for User %d. Aborting pending message delivery.", client.UserID)
+			// Break the loop and only update the status for messages that were actually sent.
+			goto updateStatus
+		}
+	}
+
+updateStatus:
+	// 3. Mark the successfully sent messages as 'DELIVERED'.
+	if len(deliveredIDs) > 0 {
+		if err := h.MessageService.MarkMessagesAsDelivered(context.Background(), deliveredIDs); err != nil {
+			log.Printf("Error marking messages as delivered for User %d: %v", client.UserID, err)
+		}
+	}
 }
 
 // handleUnregister removes a client connection from the hub's map.
@@ -124,9 +165,25 @@ func (h *Hub) handleTypingNotification(message *Message) {
 	}
 }
 
-// handleBroadcast routes a message to the intended recipients and persists it.
+// handleBroadcast determines if a message is P2P or Group and routes it to the appropriate handler.
 func (h *Hub) handleBroadcast(message *Message) {
-	// 1. Construct the domain message struct
+	// Check if the recipient ID corresponds to a valid group.
+	members, err := h.GroupService.GetMembers(context.Background(), message.RecipientID)
+
+	if err == nil && len(members) > 0 {
+		// Case A: It's a group message.
+		h.handleGroupBroadcast(message, members)
+	} else {
+		// Case B: It's a P2P message.
+		h.handleP2PBroadcast(message)
+	}
+}
+
+// handleGroupBroadcast persists a group message and dispatches it to online members.
+func (h *Hub) handleGroupBroadcast(message *Message, members []int64) {
+	log.Printf("Broadcasting GROUP message from User %d to Group %d...", message.SenderID, message.RecipientID)
+	
+	// 1. Group messages are not queued for offline users; their status is always 'SENT'.
 	domainMsg := &domain.Message{
 		SenderID:    message.SenderID,
 		RecipientID: message.RecipientID,
@@ -134,62 +191,71 @@ func (h *Hub) handleBroadcast(message *Message) {
 		Content:     message.Content,
 		MediaURL:    message.MediaURL,
 		Timestamp:   message.Timestamp,
+		Status:      domain.MessageSent, 
 	}
 
-	// 2. Persistence (Always Persist First)
-	// FIX 2: Use exported field name h.MessageService
-	persistedDomainMsg, err := h.MessageService.Save( 
-		context.Background(),
-		domainMsg,
-	)
-
+	// 2. Persist the message.
+	persistedMsg, err := h.MessageService.Save(context.Background(), domainMsg)
 	if err != nil {
-		log.Printf("Error persisting message from %d to %d: %v", domainMsg.SenderID, domainMsg.RecipientID, err)
+		log.Printf("Error persisting group message: %v", err)
 		return
 	}
+	wsMsg := h.domainToWsMessage(persistedMsg)
 
-	// 3. TYPE CONVERSION: Convert the *domain.Message to a *ws.Message for routing
-	persistedWsMsg := h.domainToWsMessage(persistedDomainMsg)
+	// 3. Dispatch the message only to the ONLINE members of the group.
+	for _, memberID := range members {
+		if h.isUserOnline(memberID) {
+			h.sendMessageToUser(memberID, wsMsg)
+		}
+	}
+}
 
-	// 4. Determine Recipients (P2P vs Group)
-	
-	// Start with the sender (for echo)
-	recipientIDs := []int64{persistedWsMsg.SenderID}
+// handleP2PBroadcast persists a P2P message, queuing it if the recipient is offline.
+func (h *Hub) handleP2PBroadcast(message *Message) {
+	log.Printf("Broadcasting P2P message from User %d to User %d...", message.SenderID, message.RecipientID)
 
-	// Try to get members list; if it succeeds, it's a group message.
-	// FIX 3: Use exported field name h.GroupService
-	members, err := h.GroupService.GetMembers(context.Background(), persistedWsMsg.RecipientID) 
+	// 1. Check recipient's online status to determine message status ('SENT' or 'PENDING').
+	recipientOnline := h.isUserOnline(message.RecipientID)
+	status := domain.MessageSent
+	if !recipientOnline {
+		status = domain.MessagePending
+	}
 
-	if err == nil && len(members) > 0 {
-		// CASE A: Group Message (RecipientID is a valid GroupID)
-		log.Printf("Broadcasting message (ID %d) from User %d to Group %d (%d members)...",
-			persistedWsMsg.ID, persistedWsMsg.SenderID, persistedWsMsg.RecipientID, len(members))
-		
-		// Add all group members to the recipients list
-		recipientIDs = append(recipientIDs, members...)
+	domainMsg := &domain.Message{
+		SenderID:    message.SenderID,
+		RecipientID: message.RecipientID,
+		Type:        message.Type,
+		Content:     message.Content,
+		MediaURL:    message.MediaURL,
+		Timestamp:   message.Timestamp,
+		Status:      status,
+	}
 
+	// 2. Persist the message.
+	persistedMsg, err := h.MessageService.Save(context.Background(), domainMsg)
+	if err != nil {
+		log.Printf("Error persisting P2P message: %v", err)
+		return
+	}
+	wsMsg := h.domainToWsMessage(persistedMsg)
+
+	// 3. The sender always gets an echo of their message.
+	h.sendMessageToUser(message.SenderID, wsMsg)
+
+	// 4. Dispatch to the recipient ONLY if they are currently online.
+	if recipientOnline {
+		h.sendMessageToUser(message.RecipientID, wsMsg)
 	} else {
-		// CASE B: P2P Message (RecipientID is a UserID or an unknown ID)
-		log.Printf("P2P message (ID %d) from User %d to User %d...",
-			persistedWsMsg.ID, persistedWsMsg.SenderID, persistedWsMsg.RecipientID)
+		log.Printf("Recipient %d is offline. Message (ID %d) will be delivered on next connection.", message.RecipientID, persistedMsg.ID)
+	}
+}
 
-		// Add the single recipient user (only if it wasn't a valid group broadcast)
-		if persistedWsMsg.RecipientID != 0 {
-			recipientIDs = append(recipientIDs, persistedWsMsg.RecipientID)
-		} else {
-			log.Println("Warning: Global broadcast not yet implemented and RecipientID is 0.")
-		}
-	}
-	
-	// 5. Dispatch the message to all determined recipients
-	sentTo := make(map[int64]bool)
-	for _, userID := range recipientIDs {
-		// Ensure we don't send the message multiple times (e.g., sender is also a group member)
-		if !sentTo[userID] {
-			h.sendMessageToUser(userID, persistedWsMsg)
-			sentTo[userID] = true
-		}
-	}
+// isUserOnline checks if a user has at least one active WebSocket connection.
+func (h *Hub) isUserOnline(userID int64) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	connections, ok := h.clients[userID]
+	return ok && len(connections) > 0
 }
 
 // sendMessageToUser sends a message to all active clients of a specific UserID.
