@@ -49,6 +49,9 @@ func RegisterRoutes(
 
 			// Message History endpoint
 			secured.GET("/messages/history/:recipientID", messageHandler.GetConversationHistory)
+
+			// Recent Conversations (Chats) Endpoint
+			secured.GET("/chats", messageHandler.GetRecentConversations)
 			
 			// Group Endpoints
 			secured.POST("/groups", groupHandler.CreateGroup)

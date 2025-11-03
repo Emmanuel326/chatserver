@@ -71,6 +71,32 @@ func (h *MessageHandler) GetConversationHistory(c *gin.Context) {
 	})
 }
 
+// GetRecentConversations retrieves the latest message from each of the user's conversations.
+// GET /v1/chats
+func (h *MessageHandler) GetRecentConversations(c *gin.Context) {
+	// 1. Get Authenticated User ID
+	userID, exists := middleware.GetUserIDFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed or user ID missing"})
+		return
+	}
+
+	// 2. Call Domain Service to retrieve recent conversations
+	messages, err := h.MessageService.GetRecentConversations(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve recent conversations"})
+		return
+	}
+
+	// Ensure we return an empty array instead of null if no conversations are found
+	if messages == nil {
+		messages = []*domain.Message{}
+	}
+
+	// 3. Success Response
+	c.JSON(http.StatusOK, messages)
+}
+
 // SendGroupMessage handles sending a new message to a specific group.
 // POST /v1/messages/group/:groupID
 func (h *MessageHandler) SendGroupMessage(c *gin.Context) { 
