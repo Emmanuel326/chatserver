@@ -87,12 +87,27 @@ func main() {
 	defer db.Close()
 	sqlite.Migrate(db)
 
-	// --- 3. Initialize Repositories (Ports) ---
+	// --- 3. Build Application Services ---
+	app := buildApplicationServices(cfg, db)
+
+	// --- 4. Setup and Run Gin Router ---
+	router := setupRouter(app)
+
+	// Use the new logger setup from the team
+	logger.Log().Info(fmt.Sprintf("🚀 Server running on http://localhost:%s", cfg.SERVER_PORT))
+	if err := router.Run(":" + cfg.SERVER_PORT); err != nil {
+		logger.Log().Fatal("Server failed to start:", zap.Error(err))
+	}
+}
+
+// buildApplicationServices initializes all application components and returns the fully wired ApplicationServices struct.
+func buildApplicationServices(cfg *config.Config, db *sqlx.DB) *ApplicationServices {
+	// --- Initialize Repositories (Ports) ---
 	userRepo := sqlite.NewUserRepository(db)
 	messageRepo := sqlite.NewMessageRepository(db)
 	groupRepo := sqlite.NewGroupRepository(db)
 
-	// --- 4. Initialize Core Components and Domain Services ---
+	// --- Initialize Core Components and Domain Services ---
 	jwtManager := auth.NewJWTManager(cfg)
 	userService := domain.NewUserService(userRepo)
 	groupService := domain.NewGroupService(groupRepo, userRepo)
@@ -109,27 +124,18 @@ func main() {
 	// 3. Inject the created MessageService back into the Hub.
 	chatHub.MessageService = messageService
 
-	// --- 5. Package Services for Injection ---
-	app := &ApplicationServices{
-		Config: cfg,
-		DB: db,
-		UserRepository: userRepo,
+	// --- Package Services for Injection ---
+	return &ApplicationServices{
+		Config:            cfg,
+		DB:                db,
+		UserRepository:    userRepo,
 		MessageRepository: messageRepo,
-		GroupRepository: groupRepo,
-		UserService: userService,
-		MessageService: messageService,
-		GroupService: groupService,
-		JWTManager: jwtManager,
-		ChatHub: chatHub,
-	}
-
-	// --- 6. Setup and Run Gin Router ---
-	router := setupRouter(app)
-
-	// Use the new logger setup from the team
-	logger.Log().Info(fmt.Sprintf("🚀 Server running on http://localhost:%s", cfg.SERVER_PORT))
-	if err := router.Run(":" + cfg.SERVER_PORT); err != nil {
-		logger.Log().Fatal("Server failed to start:", zap.Error(err))
+		GroupRepository:   groupRepo,
+		UserService:       userService,
+		MessageService:    messageService,
+		GroupService:      groupService,
+		JWTManager:        jwtManager,
+		ChatHub:           chatHub,
 	}
 }
 
