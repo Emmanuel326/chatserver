@@ -3,6 +3,7 @@ package api
 import (
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Emmanuel326/chatserver/internal/api/middleware" // Added for middleware.GetUserIDFromContext
@@ -110,6 +111,30 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, users)
+}
+
+// GetUserByID handles GET /v1/users/:userID to retrieve a single user's public details.
+func (h *UserHandler) GetUserByID(c *gin.Context) {
+	userIDStr := c.Param("userID")
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID format"})
+		return
+	}
+
+	user, err := h.UserService.GetUserByID(c.Request.Context(), userID)
+	if err != nil {
+		// Differentiate between "not found" and other errors
+		if _, ok := err.(*domain.NotFoundError); ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+		} else {
+			log.Printf("Failed to retrieve user %d: %v", userID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
 }
 
 // Login handles user authentication via HTTP POST.
