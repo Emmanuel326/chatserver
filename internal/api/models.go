@@ -1,5 +1,7 @@
 package api
 
+import "time"
+
 // RegisterRequest defines the expected JSON payload for user registration
 type RegisterRequest struct {
 	Username string `json:"username" binding:"required,min=3"`
@@ -17,9 +19,6 @@ type LoginRequest struct {
 type AuthResponse struct {
 	Token string `json:"token"`
 }
-
-// SendGroupMessageRequest defines the expected JSON payload for sending a group message.
-import "time"
 
 // SendGroupMessageRequest defines the expected JSON payload for sending a group message.
 // It includes the content for text messages and an optional MediaURL for images/files.
