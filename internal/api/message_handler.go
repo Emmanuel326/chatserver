@@ -103,7 +103,7 @@ func (h *MessageHandler) GetRecentConversations(c *gin.Context) {
 }
 
 // SendGroupMessage handles sending a new message to a specific group.
-// POST /v1/messages/group/:groupID
+// POST /v1/groups/:groupID/messages
 func (h *MessageHandler) SendGroupMessage(c *gin.Context) { 
 	// 1. Get authenticated UserID (senderID)
 	senderID, exists := middleware.GetUserIDFromContext(c)
@@ -121,7 +121,7 @@ func (h *MessageHandler) SendGroupMessage(c *gin.Context) {
 	}
 
 	// 3. Parse request body using the new struct
-	var req SendGroupMessageRequest
+	var req SendMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
@@ -133,9 +133,8 @@ func (h *MessageHandler) SendGroupMessage(c *gin.Context) {
         return
     }
 
-	// 4. Call MessageService to send the message (now includes MediaURL)
-    // FIX: Passing req.MediaURL to the service layer
-	_, err = h.MessageService.SendGroupMessage(c.Request.Context(), senderID, groupID, req.Content, req.MediaURL)
+	// 4. Call MessageService to send the message (now includes MediaURL and Type)
+	_, err = h.MessageService.SendGroupMessage(c.Request.Context(), senderID, groupID, req.Content, req.MediaURL, req.Type)
 	
 	if err != nil {
 		// Differentiate between domain errors (e.g., membership) and server errors
@@ -147,11 +146,11 @@ func (h *MessageHandler) SendGroupMessage(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Message sent successfully to group"})
+	c.JSON(http.StatusCreated, gin.H{"message": "Message sent successfully to group"})
 }
 
 // SendP2PMessage handles sending a new message to a specific user.
-// POST /v1/messages/p2p/:recipientID
+// POST /v1/users/:recipientID/messages
 func (h *MessageHandler) SendP2PMessage(c *gin.Context) {
 	// 1. Get authenticated UserID (senderID)
 	senderID, exists := middleware.GetUserIDFromContext(c)
@@ -175,8 +174,7 @@ func (h *MessageHandler) SendP2PMessage(c *gin.Context) {
 	}
 
 	// 3. Parse request body
-	// NOTE: We rely on the SendMessageRequest struct defined elsewhere (e.g., in models.go or at the package level)
-	var req SendGroupMessageRequest // Re-use the existing request structure
+	var req SendMessageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
@@ -188,8 +186,8 @@ func (h *MessageHandler) SendP2PMessage(c *gin.Context) {
 		return
 	}
 
-	// 4. Call MessageService to send the message (includes MediaURL)
-	_, err = h.MessageService.SendP2PMessage(c.Request.Context(), senderID, recipientID, req.Content, req.MediaURL)
+	// 4. Call MessageService to send the message (includes MediaURL and Type)
+	_, err = h.MessageService.SendP2PMessage(c.Request.Context(), senderID, recipientID, req.Content, req.MediaURL, req.Type)
 	
 	if err != nil {
 		// Differentiate between domain errors (e.g., user not found) and server errors
@@ -201,12 +199,12 @@ func (h *MessageHandler) SendP2PMessage(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "P2P message sent successfully"})
+	c.JSON(http.StatusCreated, gin.H{"message": "P2P message sent successfully"})
 }
 
-// GetGroupHistoryHandler retrieves the message history for a specific group.
+// GetGroupConversationHistory retrieves the message history for a specific group.
 // GET /v1/groups/:groupID/messages
-func (h *MessageHandler) GetGroupHistoryHandler(c *gin.Context) {
+func (h *MessageHandler) GetGroupConversationHistory(c *gin.Context) {
 	// 1. Get Authenticated User ID
 	userID, exists := middleware.GetUserIDFromContext(c)
 	if !exists {

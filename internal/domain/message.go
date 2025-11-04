@@ -72,9 +72,7 @@ type MessageService interface {
 	GetPendingMessages(ctx context.Context, userID int64) ([]*Message, error)
 	MarkMessagesAsDelivered(ctx context.Context, messageIDs []int64) error
 	GetGroupConversationHistory(ctx context.Context, groupID int64, limit int, beforeID int64) ([]*Message, error)
-	// FIX: Update interface signature to match the implementation in message_service.go
-	SendGroupMessage(ctx context.Context, senderID int64, groupID int64, content string, mediaURL string) (*Message, error)
-	SendP2PMessage(ctx context.Context, senderID int64, recipientID int64, content string, mediaURL string) (*Message, error)
-
-	
+	// Updated interface signatures to include MessageType
+	SendGroupMessage(ctx context.Context, senderID int64, groupID int64, content string, mediaURL string, messageType MessageType) (*Message, error)
+	SendP2PMessage(ctx context.Context, senderID int64, recipientID int64, content string, mediaURL string, messageType MessageType) (*Message, error)
 }

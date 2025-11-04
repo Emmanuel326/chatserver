@@ -23,25 +23,30 @@ type Hub struct {
 	Register chan *Client
 	Unregister chan *Client
 	
-	// Dependencies for business logic (Now exported!)
-	MessageService domain.MessageService // EXPORTED FIELD
-	GroupService domain.GroupService     // EXPORTED FIELD
+	// Dependencies for business logic
+	MessageService domain.MessageService
+	GroupService domain.GroupService
+	UserService domain.UserService
 
 	// Mutex to protect the clients map
 	mu sync.RWMutex
+
+	// Channel to signal the Hub to stop
+	quit chan struct{}
 }
 
-// NewHub creates and returns a new Hub, injected with MessageService and GroupService.
-func NewHub(messageService domain.MessageService, groupService domain.GroupService) *Hub {
+// NewHub creates and returns a new Hub, injected with MessageService, GroupService, and UserService.
+func NewHub(messageService domain.MessageService, groupService domain.GroupService, userService domain.UserService) *Hub {
 	return &Hub{
-		Broadcast:  make(chan *Message),
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
-		Typing:     make(chan *Message),
-		clients: make(map[int64][]*Client),
-		// FIX 1: Use exported field names in struct literal
-		MessageService: messageService, 
-		GroupService: groupService, 
+		Broadcast:      make(chan *Message),
+		Register:       make(chan *Client),
+		Unregister:     make(chan *Client),
+		Typing:         make(chan *Message),
+		clients:        make(map[int64][]*Client),
+		MessageService: messageService,
+		GroupService:   groupService,
+		UserService:    userService,
+		quit:           make(chan struct{}), // Initialize the quit channel
 	}
 }
 
@@ -58,8 +63,16 @@ func (h *Hub) Run() {
 			h.handleBroadcast(message)
 		case notification := <-h.Typing:
 			h.handleTypingNotification(notification)
+		case <-h.quit:
+			log.Println("🛑 WebSocket Hub stopping.")
+			return // Exit the Run loop
 		}
 	}
+}
+
+// Stop sends a signal to the Hub's Run goroutine to terminate.
+func (h *Hub) Stop() {
+	close(h.quit)
 }
 
 // handleRegister adds a new client connection to the hub's map and triggers pending message delivery.

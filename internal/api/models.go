@@ -20,11 +20,12 @@ type AuthResponse struct {
 	Token string `json:"token"`
 }
 
-// SendGroupMessageRequest defines the expected JSON payload for sending a group message.
+// SendMessageRequest defines the expected JSON payload for sending a message.
 // It includes the content for text messages and an optional MediaURL for images/files.
-type SendGroupMessageRequest struct {
-	Content string `json:"content"` // Text content (required for text message)
-	MediaURL string `json:"media_url"` // Optional URL for external media (required for image/file message)
+type SendMessageRequest struct {
+	Content  string           `json:"content"`  // Text content (required for text message)
+	MediaURL string           `json:"media_url"` // Optional URL for external media (required for image/file message)
+	Type     domain.MessageType `json:"type"`     // Type of message (e.g., "text", "image", "file")
 }
 
 // UserCardResponse defines the structure for a user in the chat list,
