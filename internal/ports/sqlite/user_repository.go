@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql" // Needed for sql.ErrNoRows, sql.NullString, sql.NullTime, sql.NullInt64
 	"log"
-	"time" // Needed for time.Time
 
 	"github.com/Emmanuel326/chatserver/internal/domain"
 	"github.com/jmoiron/sqlx"
