@@ -44,8 +44,10 @@ func RegisterRoutes(
 		secured := v1.Group("/")
 		secured.Use(middleware.AuthMiddleware(jwtManager))
 		{
- 			// User Listing Endpoint (FIXED: Removed invalid character and cleaned indentation)
+			// User Listing Endpoint (all users)
 			secured.GET("/users", userHandler.ListUsers)
+			// User Listing with last chat message info (for chat cards/previews)
+			secured.GET("/users/with-chat-info", userHandler.ListUsersWithChatInfo)
 
 			// Message History endpoint
 			secured.GET("/messages/history/:recipientID", messageHandler.GetConversationHistory)

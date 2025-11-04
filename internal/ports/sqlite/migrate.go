@@ -59,12 +59,18 @@ func Migrate(db *sqlx.DB) {
 		log.Fatalf("Failed to execute initial migrations: %v", err)
 	}
     
-    // 2. ALTER TABLE for adding the new media_url column (handles existing databases)
-    // We use a separate EXEC for ALTER TABLE because the execution often fails 
-    // if the column already exists, which is the expected behavior for a second run.
+    -- Add indexes for efficient conversation history lookups
+    CREATE INDEX IF NOT EXISTS idx_messages_sender_recipient_id_desc ON messages (sender_id, recipient_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_messages_recipient_sender_id_desc ON messages (recipient_id, sender_id, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_messages_sender_recipient_type_timestamp_id ON messages (sender_id, recipient_id, type, timestamp DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_messages_recipient_sender_type_timestamp_id ON messages (recipient_id, sender_id, type, timestamp DESC, id DESC);
+
+    -- 2. ALTER TABLE for adding the new media_url column (handles existing databases)
+    -- We use a separate EXEC for ALTER TABLE because the execution often fails
+    -- if the column already exists, which is the expected behavior for a second run.
     alterQuery := `
         -- Attempt to add the new column if it doesn't already exist
-        -- SQLite requires checking for table existence, but the simplest approach 
+        -- SQLite requires checking for table existence, but the simplest approach
         -- is to rely on the error handling if the column is already there.
         ALTER TABLE messages ADD COLUMN media_url TEXT;
     `

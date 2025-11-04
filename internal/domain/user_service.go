@@ -110,3 +110,9 @@ func (s *userService) GetUserByID(ctx context.Context, userID int64) (*User, err
 	// Delegate to the Repository (assuming userRepo has a GetByID method)
 	return s.userRepo.GetByID(ctx, userID)
 }
+
+// ListAllUsersWithChatInfo retrieves all users along with their last P2P message
+// content and timestamp with the currentUserID.
+func (s *userService) ListAllUsersWithChatInfo(ctx context.Context, currentUserID int64) ([]*UserWithChatInfo, error) {
+	return s.userRepo.GetAllUsersWithLastMessageInfo(ctx, currentUserID)
+}

@@ -22,5 +22,16 @@ type AuthResponse struct {
 // It includes the content for text messages and an optional MediaURL for images/files.
 type SendGroupMessageRequest struct {
 	Content string `json:"content"` // Text content (required for text message)
-    MediaURL string `json:"media_url"` // Optional URL for external media (required for image/file message)
+	MediaURL string `json:"media_url"` // Optional URL for external media (required for image/file message)
+}
+
+// UserCardResponse defines the structure for a user in the chat list,
+// including an optional last message preview.
+type UserCardResponse struct {
+	ID                   int64      `json:"id"`
+	Username             string     `json:"username"`
+	Email                string     `json:"email"`
+	LastMessageContent   *string    `json:"last_message_content,omitempty"`
+	LastMessageTimestamp *time.Time `json:"last_message_timestamp,omitempty"`
+	LastMessageSenderID  *int64     `json:"last_message_sender_id,omitempty"` // ID of the sender of the last message
 }

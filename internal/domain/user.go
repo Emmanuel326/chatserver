@@ -53,6 +53,19 @@ type UserRepository interface {
 	// FIX: Add GetByUsername which is required by the UserService implementation
 	GetByUsername(ctx context.Context, username string) (*User, error) 
 	Create(ctx context.Context, user *User) (*User, error)
-	GetAll(ctx context.Context) ([]*User, error) 
+	GetAll(ctx context.Context) ([]*User, error)
+	GetAllUsersWithLastMessageInfo(ctx context.Context, currentUserID int64) ([]*UserWithChatInfo, error)
+}
+
+// UserWithChatInfo combines basic user information with the latest message details
+// between this user and a specific requesting user.
+type UserWithChatInfo struct {
+	ID                   int64
+	Username             string
+	Email                string
+	CreatedAt            time.Time
+	LastMessageContent   *string // Use pointer for nullable fields from SQL
+	LastMessageTimestamp *time.Time // Use pointer for nullable fields from SQL
+	LastMessageSenderID  *int64     // Use pointer for nullable fields from SQL
 }
 

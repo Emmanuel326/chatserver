@@ -24,6 +24,39 @@ func NewUserHandler(userService domain.UserService, jwtManager *auth.JWTManager)
 	}
 }
 
+// ListUsersWithChatInfo handles GET /v1/users/with-chat-info to retrieve
+// all registered users along with the last P2P message content and timestamp
+// for the authenticated user with each listed user.
+func (h *UserHandler) ListUsersWithChatInfo(c *gin.Context) {
+	currentUserID, exists := middleware.GetUserIDFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication failed or user ID missing"})
+		return
+	}
+
+	usersWithInfo, err := h.UserService.ListAllUsersWithChatInfo(c.Request.Context(), currentUserID)
+	if err != nil {
+		log.Printf("Failed to retrieve users with chat info for user %d: %v", currentUserID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user chat list"})
+		return
+	}
+
+	// Map domain.UserWithChatInfo to api.UserCardResponse
+	response := make([]UserCardResponse, len(usersWithInfo))
+	for i, u := range usersWithInfo {
+		response[i] = UserCardResponse{
+			ID:                   u.ID,
+			Username:             u.Username,
+			Email:                u.Email,
+			LastMessageContent:   u.LastMessageContent,
+			LastMessageTimestamp: u.LastMessageTimestamp,
+			LastMessageSenderID:  u.LastMessageSenderID,
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
 // Register handles user registration via HTTP POST.
 func (h *UserHandler) Register(c *gin.Context) {
 	var req RegisterRequest
