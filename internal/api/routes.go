@@ -46,6 +46,8 @@ func RegisterRoutes(
 		{
 			// User Listing Endpoint (all users)
 			secured.GET("/users", userHandler.ListUsers)
+			// Single User Details Endpoint
+			secured.GET("/users/:userID", userHandler.GetUserByID)
 			// User Listing with last chat message info (for chat cards/previews)
 			secured.GET("/users/with-chat-info", userHandler.ListUsersWithChatInfo)
 
