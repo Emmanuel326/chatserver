@@ -174,7 +174,7 @@ Request Body JSON Schema: `RegisterRequest`
 ```json
 {
     "username": "newuser",
-    "email": "newuser@example.com",
+    "email": "newuser@temp.com",
     "password": "securepassword123"
 }
 ```
@@ -202,7 +202,7 @@ Authentication: No
 Request Body JSON Schema: `LoginRequest`
 ```json
 {
-    "email": "user@example.com",
+    "email": "user@temp.com",
     "password": "securepassword123"
 }
 ```
