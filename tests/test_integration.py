@@ -217,3 +217,63 @@ def test_offline_delivery_and_status(users):
     assert updated_message is not None, "Message could not be re-fetched from the database"
     assert updated_message['id'] == message_id
     assert updated_message['status'] == 'delivered', f"Message status should be 'delivered', but was '{updated_message['status']}'"
+
+
+def test_get_group_history_with_pagination(users):
+    """
+    Tests fetching group message history with pagination and authorization.
+    """
+    group_owner, user_a, non_member = users[0], users[1], users[2]
+
+    # 1. Create a group and add User A
+    group = create_group(group_owner['token'], "Group History Test Group")
+    group_id = group['id']
+    add_group_member(group_owner['token'], group_id, user_a['id'])
+
+    # 2. User A sends 7 messages to the group
+    ws_a = websocket.create_connection(f"{WEBSOCKET_URL}?token={user_a['token']}")
+    sent_messages_content = []
+    try:
+        for i in range(7):
+            content = f"Group message {i}"
+            sent_messages_content.append(content)
+            msg_to_group = {"recipient_id": group_id, "type": "group", "content": content}
+            ws_a.send(json.dumps(msg_to_group))
+            time.sleep(0.05) # Small delay for timestamp difference
+    finally:
+        ws_a.close()
+
+    # 3. Group owner fetches the first page of history (most recent 5)
+    headers_owner = {"Authorization": f"Bearer {group_owner['token']}"}
+    response_page1 = requests.get(f"{BASE_URL}/groups/{group_id}/messages?limit=5", headers=headers_owner)
+
+    assert response_page1.status_code == 200
+    data_page1 = response_page1.json()
+    assert data_page1['count'] == 5
+    messages_page1 = data_page1['messages']
+    assert len(messages_page1) == 5
+    
+    # Verify content of the most recent 5 messages (messages 2 through 6)
+    for i in range(5):
+        assert messages_page1[i]['content'] == sent_messages_content[i + 2]
+
+    # 4. Get the ID of the oldest message on the first page to use as 'before_id' for the next fetch
+    before_id = messages_page1[0]['id']
+
+    # 5. Group owner fetches the second page (the remaining 2 older messages)
+    response_page2 = requests.get(f"{BASE_URL}/groups/{group_id}/messages?limit=5&before_id={before_id}", headers=headers_owner)
+    
+    assert response_page2.status_code == 200
+    data_page2 = response_page2.json()
+    assert data_page2['count'] == 2
+    messages_page2 = data_page2['messages']
+    assert len(messages_page2) == 2
+
+    # Verify content of the oldest 2 messages (messages 0 and 1)
+    assert messages_page2[0]['content'] == sent_messages_content[0]
+    assert messages_page2[1]['content'] == sent_messages_content[1]
+    
+    # 6. Authorization Check: Non-member tries to fetch history
+    headers_non_member = {"Authorization": f"Bearer {non_member['token']}"}
+    response_auth_fail = requests.get(f"{BASE_URL}/groups/{group_id}/messages", headers=headers_non_member)
+    assert response_auth_fail.status_code == 403, "Non-member should receive a 403 Forbidden error"
