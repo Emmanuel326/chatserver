@@ -4,7 +4,9 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time" // Added for UserCardResponse.LastMessageTimestamp
 
+	"github.com/Emmanuel326/chatserver/internal/api/middleware" // Added for middleware.GetUserIDFromContext
 	"github.com/Emmanuel326/chatserver/internal/auth"
 	"github.com/Emmanuel326/chatserver/internal/domain"
 	"github.com/gin-gonic/gin"
