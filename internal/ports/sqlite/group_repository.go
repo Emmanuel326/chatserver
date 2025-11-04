@@ -97,3 +97,19 @@ func (r *GroupRepository) FindMembersByGroupID(ctx context.Context, groupID int6
 	}
 	return userIDs, nil
 }
+
+// FindGroupsByUserID retrieves all groups a specific user is a member of.
+func (r *GroupRepository) FindGroupsByUserID(ctx context.Context, userID int64) ([]*domain.Group, error) {
+	var groups []*domain.Group
+	query := `
+		SELECT g.id, g.name, g.owner_id, g.created_at
+		FROM groups g
+		JOIN group_members gm ON g.id = gm.group_id
+		WHERE gm.user_id = ?
+	`
+	err := r.db.SelectContext(ctx, &groups, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	return groups, nil
+}

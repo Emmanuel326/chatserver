@@ -73,4 +73,10 @@ func (s *groupService) GetMembers(ctx context.Context, groupID int64) ([]int64, 
 	if groupID == 0 {
 		return nil, errors.New("group ID cannot be zero")
 	}
-	return s.groupRepo.FindMembersByGroupID(ctx, groupID) } 
+	return s.groupRepo.FindMembersByGroupID(ctx, groupID)
+}
+
+// GetGroupsForUser retrieves all groups for a given user.
+func (s *groupService) GetGroupsForUser(ctx context.Context, userID int64) ([]*Group, error) {
+	return s.groupRepo.FindGroupsByUserID(ctx, userID)
+}

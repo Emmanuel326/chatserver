@@ -30,6 +30,7 @@ type GroupService interface {
 	CreateGroup(ctx context.Context, name string, ownerID int64) (*Group, error)
 	AddMember(ctx context.Context, groupID, userID int64, inviterID int64) error
 	GetMembers(ctx context.Context, groupID int64) ([]int64, error)
+	GetGroupsForUser(ctx context.Context, userID int64) ([]*Group, error)
 }
 
 // GroupRepository defines the data access operations for groups and membership.
@@ -38,4 +39,5 @@ type GroupRepository interface {
 	FindByID(ctx context.Context, groupID int64) (*Group, error)
 	AddMember(ctx context.Context, member *GroupMember) error
 	FindMembersByGroupID(ctx context.Context, groupID int64) ([]int64, error)
+	FindGroupsByUserID(ctx context.Context, userID int64) ([]*Group, error)
 }

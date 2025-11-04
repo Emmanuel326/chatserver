@@ -20,6 +20,31 @@ func NewGroupHandler(groupService domain.GroupService) *GroupHandler {
 	return &GroupHandler{GroupService: groupService}
 }
 
+// ListUserGroups handles retrieving all groups a user is a member of.
+// GET /v1/groups
+func (h *GroupHandler) ListUserGroups(c *gin.Context) {
+	// 1. Get authenticated UserID from context
+	userID, exists := middleware.GetUserIDFromContext(c)
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	// 2. Call GroupService to get the groups for the user
+	groups, err := h.GroupService.GetGroupsForUser(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve user's groups", "details": err.Error()})
+		return
+	}
+
+	// If the user is not in any groups, return an empty list instead of null
+	if groups == nil {
+		groups = []*domain.Group{}
+	}
+
+	c.JSON(http.StatusOK, groups)
+}
+
 // CreateGroup handles the creation of a new chat group.
 // POST /v1/groups
 func (h *GroupHandler) CreateGroup(c *gin.Context) {
