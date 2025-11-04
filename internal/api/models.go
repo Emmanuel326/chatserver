@@ -19,9 +19,10 @@ type AuthResponse struct {
 }
 
 // SendGroupMessageRequest defines the expected JSON payload for sending a group message.
-// It includes the content for text messages and an optional MediaURL for images/files.
 import "time"
 
+// SendGroupMessageRequest defines the expected JSON payload for sending a group message.
+// It includes the content for text messages and an optional MediaURL for images/files.
 type SendGroupMessageRequest struct {
 	Content string `json:"content"` // Text content (required for text message)
 	MediaURL string `json:"media_url"` // Optional URL for external media (required for image/file message)
