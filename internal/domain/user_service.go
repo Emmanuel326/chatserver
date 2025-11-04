@@ -19,6 +19,7 @@ type UserService interface {
 	
 	// Other methods often required by other layers:
 	GetUserByID(ctx context.Context, userID int64) (*User, error)
+	ListAllUsersWithChatInfo(ctx context.Context, currentUserID int64) ([]*UserWithChatInfo, error)
 	// NOTE: You may need to add or adjust other methods later
 }
 
