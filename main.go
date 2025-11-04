@@ -55,9 +55,19 @@ func createDefaultUsers(ctx context.Context, userService domain.UserService) {
 	}{
 		{"tom", "tom@temp.com", "password123"},
 		{"jerry", "jerry@temp.com", "password123"},
+		{"alice", "alice@temp.com", "password123"},
+		{"bob", "bob@temp.com", "password123"},
+		{"charlie", "charlie@temp.com", "password123"},
+		{"diana", "diana@temp.com", "password123"},
+		{"eve", "eve@temp.com", "password123"},
 	}
 
 	for _, u := range defaultUsers {
+		// The CreateUser function currently generates an email based on the username.
+		// For these default users, we'll try to use the provided email if the UserService.CreateUser
+		// is updated to accept it, or rely on the generated one if it's not.
+		// Given the current `CreateUser` signature, it only takes `username` and `password`,
+		// so the email will be derived from the username by that function.
 		if _, err := userService.GetUserByUsername(ctx, u.username); err != nil {
 			if _, err := userService.CreateUser(ctx, u.username, u.password); err == nil {
 				logger.Log().Info(fmt.Sprintf("✅ Created default user: %s (%s)", u.username, u.email))
