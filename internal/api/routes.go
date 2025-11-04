@@ -60,7 +60,7 @@ func RegisterRoutes(
 			secured.POST("/groups/:groupID/members", groupHandler.AddMember)
 			// ADDED: Missing GetMembers route for completeness
 			secured.GET("/groups/:groupID/members", groupHandler.GetMembers)
-			secured.GET("/groups/:groupID/messages", messageHandler.GetGroupHistoryHandler)
+			secured.GET("/groups/:groupID/messages", messageHandler.GetGroupConversationHistory)
 
 			// Message Send Endpoint (via API) - The target of our final test
 			secured.POST("/messages/group/:groupID", messageHandler.SendGroupMessage)

@@ -1,6 +1,10 @@
 package api
 
-import "time"
+import (
+	"time"
+
+	"github.com/Emmanuel326/chatserver/internal/domain" // Add missing import
+)
 
 // RegisterRequest defines the expected JSON payload for user registration
 type RegisterRequest struct {
