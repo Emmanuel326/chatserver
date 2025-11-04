@@ -59,15 +59,23 @@ func Migrate(db *sqlx.DB) {
 		log.Fatalf("Failed to execute initial migrations: %v", err)
 	}
     
-    -- Add indexes for efficient conversation history lookups
-    CREATE INDEX IF NOT EXISTS idx_messages_sender_recipient_id_desc ON messages (sender_id, recipient_id, id DESC);
-    CREATE INDEX IF NOT EXISTS idx_messages_recipient_sender_id_desc ON messages (recipient_id, sender_id, id DESC);
-    CREATE INDEX IF NOT EXISTS idx_messages_sender_recipient_type_timestamp_id ON messages (sender_id, recipient_id, type, timestamp DESC, id DESC);
-    CREATE INDEX IF NOT EXISTS idx_messages_recipient_sender_type_timestamp_id ON messages (recipient_id, sender_id, type, timestamp DESC, id DESC);
+    // Add indexes for efficient conversation history lookups
+    indexQueries := []string{
+        `CREATE INDEX IF NOT EXISTS idx_messages_sender_recipient_id_desc ON messages (sender_id, recipient_id, id DESC);`,
+        `CREATE INDEX IF NOT EXISTS idx_messages_recipient_sender_id_desc ON messages (recipient_id, sender_id, id DESC);`,
+        `CREATE INDEX IF NOT EXISTS idx_messages_sender_recipient_type_timestamp_id ON messages (sender_id, recipient_id, type, timestamp DESC, id DESC);`,
+        `CREATE INDEX IF NOT EXISTS idx_messages_recipient_sender_type_timestamp_id ON messages (recipient_id, sender_id, type, timestamp DESC, id DESC);`,
+    }
+    for _, q := range indexQueries {
+        _, err = db.Exec(q)
+        if err != nil {
+            log.Printf("INFO: Could not create index. This is often normal if index already exists: %v", err)
+        }
+    }
 
-    -- 2. ALTER TABLE for adding the new media_url column (handles existing databases)
-    -- We use a separate EXEC for ALTER TABLE because the execution often fails
-    -- if the column already exists, which is the expected behavior for a second run.
+    // 2. ALTER TABLE for adding the new media_url column (handles existing databases)
+    // We use a separate EXEC for ALTER TABLE because the execution often fails
+    // if the column already exists, which is the expected behavior for a second run.
     alterQuery := `
         -- Attempt to add the new column if it doesn't already exist
         -- SQLite requires checking for table existence, but the simplest approach
