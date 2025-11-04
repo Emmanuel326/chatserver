@@ -61,9 +61,15 @@ func (c *Client) readPump() {
 		// CRITICAL FIX: Inject the sender's ID (the only authenticated ID)
 		message.SenderID = c.UserID 
         
-        // Add server-side timestamp
-        message.Timestamp = time.Now()
-		// --- FIX END ---
+                // Add server-side timestamp
+                message.Timestamp = time.Now()
+
+		if message.GroupID !=
+		0{
+			message.RecipientID =message.GroupID
+		}
+
+		
 
 		// Route message to appropriate hub channel based on its type
 		if message.Type == domain.TypingMessage {

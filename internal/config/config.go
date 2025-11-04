@@ -32,11 +32,11 @@ func Load() *Config {
 		return defaultValue
 	}
 
-	expiryStr := getEnv("JWT_EXPIRY_MINUTES", "60")
+	expiryStr := getEnv("JWT_EXPIRY_MINUTES", "10080")
 	expiry, err := strconv.Atoi(expiryStr)
 	if err != nil {
-		log.Printf("Warning: Invalid JWT_EXPIRY_MINUTES (%s). Defaulting to 60.\n", expiryStr)
-		expiry = 60
+		log.Printf("Warning: Invalid JWT_EXPIRY_MINUTES (%s). Defaulting to 10080.\n", expiryStr)
+		expiry = 10080
 	}
 
 	return &Config{
