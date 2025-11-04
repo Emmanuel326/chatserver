@@ -1,0 +1,84 @@
+# API Contract for Chat Application
+
+This document outlines the REST endpoints, WebSocket protocol, and offline messaging flow for frontend developers.
+
+## 1. REST Endpoints Summary
+
+| Method | Route                                  | Required Parameters                                        | Authorization Status          | Request Body Example (JSON)                                | Response Body Example (JSON)                   |
+| :----- | :------------------------------------- | :--------------------------------------------------------- | :---------------------------- | :--------------------------------------------------------- | :--------------------------------------------- |
+| `GET`  | `/ping`                                | None                                                       | No Auth                       | N/A                                                        | `{"message": "pong", "db_driver": "sqlite3"}` |
+| `POST` | `/register`                            | None                                                       | No Auth                       | `{"username": "user1", "email": "user1@example.com", "password": "password123"}` | `{"id": 1, "username": "user1", "email": "user1@example.com", "created_at": "2023-10-27T10:00:00Z"}` |
+| `POST` | `/login`                               | None                                                       | No Auth                       | `{"email": "user1@example.com", "password": "password123"}` | `{"token": "eyJ..."}`                           |
+| `POST` | `/groups`                              | None                                                       | Auth Required                 | `{"name": "My New Group"}`                                 | `{"id": 1, "name": "My New Group", "owner_id": 1, "created_at": "2023-10-27T10:00:00Z"}` |
+| `POST` | `/groups/:groupID/members`             | `groupID` (Path, int64)                                    | Auth Required                 | `{"user_id": 2}`                                           | `{"message": "Member added successfully"}`     |
+| `GET`  | `/groups/:groupID/members`             | `groupID` (Path, int64)                                    | Auth Required                 | N/A                                                        | `[1, 2, 3]` (Array of UserIDs)                 |
+| `GET`  | `/v1/chats/recent`                     | None                                                       | Auth Required                 | N/A                                                        | `[{"id": 1, "sender_id": 1, "recipient_id": 2, "type": "text", "content": "Hi", "media_url": "", "timestamp": "...", "status": "SENT"}]` |
+| `POST` | `/v1/chats/p2p/:recipientID`           | `recipientID` (Path, int64)                                | Auth Required                 | `{"content": "Hello!", "media_url": ""}`                  | `{"id": 1, "sender_id": 1, "recipient_id": 2, "type": "text", "content": "Hello!", "media_url": "", "timestamp": "...", "status": "PENDING"}` |
+| `GET`  | `/v1/chats/p2p/:userID1/:userID2/history` | `userID1` (Path, int64), `userID2` (Path, int64), `limit` (Query, int, optional), `before_id` (Query, int64, optional) | Auth Required                 | N/A                                                        | `[{"id": 1, "sender_id": 1, "recipient_id": 2, "type": "text", "content": "Hey", "media_url": "", "timestamp": "...", "status": "DELIVERED"}]` |
+| `POST` | `/v1/chats/groups/:groupID`            | `groupID` (Path, int64)                                    | Auth Required                 | `{"content": "Group message!", "media_url": ""}`          | `{"id": 1, "sender_id": 1, "recipient_id": 100, "type": "text", "content": "Group message!", "media_url": "", "timestamp": "...", "status": "SENT"}` |
+| `GET`  | `/v1/chats/groups/:groupID/history`    | `groupID` (Path, int64), `limit` (Query, int, optional), `before_id` (Query, int64, optional) | Auth Required                 | N/A                                                        | `[{"id": 1, "sender_id": 1, "recipient_id": 100, "type": "text", "content": "Hello Group", "media_url": "", "timestamp": "...", "status": "SENT"}]` |
+| `GET`  | `/ws`                                  | None (JWT via query param or header)                       | Auth Required                 | N/A (WebSocket upgrade)                                    | N/A (WebSocket connection)                     |
+
+## 2. WebSocket Protocol
+
+All WebSocket messages are JSON objects.
+
+### 2.1. Message (Text/Media)
+
+Used for sending new messages and receiving messages (P2P or Group). The `recipient_id` can be either a UserID (for P2P) or a GroupID (for group chat).
+
+**Client -> Server (Sending a message):**
+```json
+{
+  "sender_id": 1,          // Authenticated UserID of the sender.
+  "recipient_id": 2,       // Target UserID or GroupID.
+  "type": "text",          // "text" or "image".
+  "content": "Hello there!",
+  "media_url": "",         // Optional URL for media (e.g., image URL).
+  "timestamp": "2023-10-27T10:00:00Z" // Client-generated timestamp, server may override or validate.
+}
+```
+
+**Server -> Client (Receiving a message or Status Update):**
+```json
+{
+  "id": 12345,             // Unique message ID generated by the server.
+  "sender_id": 1,          // ID of the sender.
+  "recipient_id": 2,       // ID of the recipient user (for P2P) or group (for group chat).
+  "type": "text",          // "text", "image", or "system".
+  "content": "Hello there!",
+  "media_url": "https://example.com/image.jpg", // Optional URL for media.
+  "timestamp": "2023-10-27T10:00:00Z", // Server-generated timestamp (ISO 8601).
+  "status": "SENT" | "PENDING" | "DELIVERED" // Current status of the message.
+}
+```
+
+### 2.2. Typing Notification
+
+Used to signal that a user is typing in a chat.
+
+**Client -> Server (Sending typing notification):**
+```json
+{
+  "sender_id": 1,          // Authenticated UserID of the typing user.
+  "recipient_id": 2,       // Target UserID or GroupID where typing is occurring.
+  "type": "typing"         // Must be "typing".
+}
+```
+
+**Server -> Client (Receiving typing notification):**
+```json
+{
+  "sender_id": 1,          // UserID of the user who is typing.
+  "recipient_id": 2,       // Target UserID or GroupID where typing is occurring.
+  "type": "typing"         // Must be "typing".
+}
+```
+
+### 2.3. Message Status Update
+
+This is typically handled by the server pushing a `Message` object (as defined in 2.1 Server -> Client) where the `id` field matches an existing message and the `status` field is updated. There is no separate "status update" message type; the status is an integral part of the `Message` structure.
+
+## 3. Offline Delivery Flow
+
+Upon a client's successful WebSocket connection and authentication, the server automatically queries for any messages queued for that specific user (those with `PENDING` status) and pushes them to the client. After successful delivery, these messages are marked as `DELIVERED` in the database.
