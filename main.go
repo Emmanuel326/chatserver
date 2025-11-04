@@ -96,21 +96,18 @@ func main() {
 	jwtManager := auth.NewJWTManager(cfg)
 	userService := domain.NewUserService(userRepo)
 	groupService := domain.NewGroupService(groupRepo, userRepo)
-	// FIX: The user creation logic will only work after the UserService interface is updated below.
-	createDefaultUsers(context.Background(), userService) 
-	
+	createDefaultUsers(context.Background(), userService)
+
 	// HANDLE CIRCULAR DEPENDENCY & HUB INITIALIZATION:
-	
-	// 1. Initialize the Hub with nil services (it just needs to exist for MessageService).
-	chatHub := ws.NewHub(nil, nil)
+	// 1. Initialize the Hub with a nil MessageService initially.
+	chatHub := ws.NewHub(nil, groupService, userService)
 	go chatHub.Run()
 
-    // 2. Initialize MessageService, passing all four required dependencies, including the chatHub.
+	// 2. Initialize MessageService, passing the hub instance to it.
 	messageService := domain.NewMessageService(messageRepo, userRepo, groupRepo, chatHub)
 
-    // 3. Inject the created services back into the Hub.
+	// 3. Inject the created MessageService back into the Hub.
 	chatHub.MessageService = messageService
-	chatHub.GroupService = groupService
 
 	// --- 5. Package Services for Injection ---
 	app := &ApplicationServices{
