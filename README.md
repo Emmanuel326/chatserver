@@ -106,23 +106,36 @@ http://localhost:8080
 
 
 Default Users
-| Username | Password |
-| -------- | -------- |
-| tom      | password |
-| jerry    | password |
+| Username | Email            | Password      |
+| :------- | :--------------- | :------------ |
+| tom      | tom@temp.com     | `password123` |
+| jerry    | jerry@temp.com   | `password123` |
+| alice    | alice@temp.com   | `password123` |
+| bob      | bob@temp.com     | `password123` |
+| charlie  | charlie@temp.com | `password123` |
+| diana    | diana@temp.com   | `password123` |
+| eve      | eve@temp.com     | `password123` |
 
 
 Core Endpoints
 
-| Method | Endpoint                            | Description                   |
-| ------ | ----------------------------------- | ----------------------------- |
-| POST   | `/v1/users/register`                | Register a new user           |
-| POST   | `/v1/users/login`                   | Authenticate and get JWT      |
-| GET    | `/v1/users`                         | List all users (JWT required) |
-| GET    | `/v1/messages/history/:recipientID` | Retrieve conversation history |
-| POST   | `/v1/messages/p2p/:recipientID`     | Send direct message           |
-| POST   | `/v1/messages/group/:groupID`       | Send group message            |
-| GET    | `/ws`                               | WebSocket connection endpoint |
+A detailed API specification is available in `expected_struct.md`. Below is a summary of the most important endpoints.
+
+| Method | Endpoint                            | Description                                       | Auth Required |
+| :----- | :---------------------------------- | :------------------------------------------------ | :------------ |
+| `POST` | `/v1/users/register`                | Register a new user account.                      | No            |
+| `POST` | `/v1/users/login`                   | Authenticate and receive a JWT.                   | No            |
+| `GET`  | `/ws`                               | Establish a real-time WebSocket connection.       | Yes (token)   |
+| `GET`  | `/v1/users`                         | Get a list of all users.                          | Yes (Bearer)  |
+| `GET`  | `/v1/users/:userID`                 | Get public details for a single user.             | Yes (Bearer)  |
+| `GET`  | `/v1/users/with-chat-info`          | Get users with last message previews (for cards). | Yes (Bearer)  |
+| `GET`  | `/v1/chats`                         | Get a list of recent conversations (P2P & Group). | Yes (Bearer)  |
+| `GET`  | `/v1/groups`                        | Get a list of all groups the user is a member of. | Yes (Bearer)  |
+| `POST` | `/v1/groups`                        | Create a new group.                               | Yes (Bearer)  |
+| `POST` | `/v1/groups/:groupID/members`       | Add a member to a group.                          | Yes (Bearer)  |
+| `GET`  | `/v1/groups/:groupID/members`       | Get a list of all members in a group.             | Yes (Bearer)  |
+| `GET`  | `/v1/groups/:groupID/messages`      | Get message history for a group.                  | Yes (Bearer)  |
+| `GET`  | `/v1/messages/history/:recipientID` | Get P2P message history with another user.        | Yes (Bearer)  |
 
 
 
@@ -130,15 +143,21 @@ Core Endpoints
 
 Example Usage
 
+**1. Log in to get a token:**
+
+```bash
 curl -X POST http://localhost:8080/v1/users/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "tom", "password": "password"}'
-
+  -d '{"email": "tom@temp.com", "password": "password123"}'
+```
 
 Response:
+```json
 {
-  "token": "eyJhbGciOi..."
+    "message": "Login successful",
+    "token": "eyJhbGciOi..."
 }
+```
 
 
 

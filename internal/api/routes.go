@@ -58,6 +58,7 @@ func RegisterRoutes(
 			secured.GET("/chats", messageHandler.GetRecentConversations)
 			
 			// Group Endpoints
+			secured.GET("/groups", groupHandler.ListUserGroups) // Get all groups for the authenticated user
 			secured.POST("/groups", groupHandler.CreateGroup)
 			secured.POST("/groups/:groupID/members", groupHandler.AddMember)
 			// ADDED: Missing GetMembers route for completeness

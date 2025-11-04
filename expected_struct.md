@@ -1,706 +1,315 @@
 # Backend API and Data Structures Blueprint
 
-This document outlines the core data models and API endpoints of the chat server backend, serving as a single source of truth for frontend or SDK integration.
+This document is the definitive guide for any client-side application (Java, web, mobile) interacting with the ChatServer backend. It provides a detailed, narrative explanation of the data models and API endpoints, designed to make integration as straightforward as possible.
 
-## 1. Model Definitions
+## 1. Core Concepts: The Data Models
 
-### `User` (internal/domain/user.go)
-
-Represents a registered user in the system.
-
-| Field Name | Type      | Description                  | Required |
-| :--------- | :-------- | :--------------------------- | :------- |
-| `id`         | `int64`     | Unique identifier for the user | Yes      |
-| `username`   | `string`    | User's chosen display name   | Yes      |
-| `email`      | `string`    | User's email address (unique) | Yes      |
-| `password`   | `string`    | Hashed password (backend only, never exposed) | Yes |
-| `created_at` | `timestamp` | Time of user registration    | Yes      |
-
-### `UserWithChatInfo` (internal/domain/user.go)
-
-Internal model combining User data with latest chat message information, used for `UserCardResponse`.
-
-| Field Name             | Type         | Description                                    | Required |
-| :----------------------- | :----------- | :--------------------------------------------- | :------- |
-| `ID`                     | `int64`      | Unique identifier for the user                 | Yes      |
-| `Username`               | `string`     | User's chosen display name                     | Yes      |
-| `Email`                  | `string`     | User's email address                           | Yes      |
-| `CreatedAt`              | `timestamp`  | Time of user registration                      | Yes      |
-| `LastMessageContent`     | `*string`    | Content of the last P2P message with the current user | Optional |
-| `LastMessageTimestamp`   | `*timestamp` | Timestamp of the last P2P message with the current user | Optional |
-| `LastMessageSenderID`    | `*int64`     | ID of the sender of the last P2P message       | Optional |
-
-### `Message` (internal/domain/message.go)
-
-Represents a chat message, either P2P or Group.
-
-| Field Name    | Type             | Description                                  | Required |
-| :------------ | :--------------- | :------------------------------------------- | :------- |
-| `id`          | `int64`          | Unique identifier for the message            | Yes      |
-| `sender_id`   | `int64`          | ID of the user who sent the message          | Yes      |
-| `recipient_id` | `int64`          | ID of the recipient user or group            | Yes      |
-| `type`        | `MessageType`    | Type of message (text, image, system, typing) | Yes      |
-| `content`     | `string`         | Text content of the message                  | Yes      |
-| `media_url`   | `string`         | URL to external media (e.g., image file)     | Optional |
-| `timestamp`   | `timestamp`      | Time when the message was sent               | Yes      |
-| `status`      | `MessageStatus`  | Current status of the message                | Yes      |
-
-### `MessageType` (internal/domain/message.go)
-
-Enum for message types.
-
-| Value         | Description               |
-| :------------ | :------------------------ |
-| `text`        | Standard text message     |
-| `image`       | Image message             |
-| `system`      | System-generated message  |
-| `typing`      | Typing indicator (transient) |
-
-### `MessageStatus` (internal/domain/message.go)
-
-Enum for message delivery status.
-
-| Value       | Description                                 |
-| :---------- | :------------------------------------------ |
-| `SENT`      | Message sent to online user or group        |
-| `PENDING`   | Message queued for offline P2P recipient    |
-| `DELIVERED` | Pending message successfully delivered      |
-
-### `Group` (internal/domain/group.go)
-
-Represents a chat group.
-
-| Field Name   | Type      | Description                    | Required |
-| :----------- | :-------- | :----------------------------- | :------- |
-| `id`         | `int64`     | Unique identifier for the group | Yes      |
-| `name`       | `string`    | Name of the group              | Yes      |
-| `owner_id`   | `int64`     | ID of the user who created the group | Yes      |
-| `created_at` | `timestamp` | Time of group creation         | Yes      |
-
-### `GroupMember` (internal/domain/group.go)
-
-Represents a membership of a user in a group.
-
-| Field Name | Type      | Description                        | Required |
-| :--------- | :-------- | :--------------------------------- | :------- |
-| `group_id`   | `int64`     | ID of the group                  | Yes      |
-| `user_id`    | `int64`     | ID of the user who is a member   | Yes      |
-| `joined_at`  | `timestamp` | Time when the user joined the group | Yes      |
-| `is_admin`   | `bool`      | Whether the user is an admin of the group | Yes      |
-
-### `RegisterRequest` (internal/api/models.go)
-
-Request body for user registration.
-
-| Field Name | Type     | Description             | Required |
-| :--------- | :------- | :---------------------- | :------- |
-| `username`   | `string`   | User's chosen username  | Yes      |
-| `email`      | `string`   | User's email address    | Yes      |
-| `password`   | `string`   | User's password (min 8 chars) | Yes      |
-
-### `LoginRequest` (internal/api/models.go)
-
-Request body for user login.
-
-| Field Name | Type     | Description         | Required |
-| :--------- | :------- | :------------------ | :------- |
-| `email`      | `string`   | User's email address | Yes      |
-| `password`   | `string`   | User's password     | Yes      |
-
-### `AuthResponse` (internal/api/models.go)
-
-Response body for successful authentication.
-
-| Field Name | Type     | Description               | Required |
-| :--------- | :------- | :------------------------ | :------- |
-| `token`      | `string`   | JWT for authenticated user | Yes      |
-
-### `SendGroupMessageRequest` (internal/api/models.go)
-
-Request body for sending a message (both P2P and Group).
-
-| Field Name | Type     | Description                        | Required |
-| :--------- | :------- | :--------------------------------- | :------- |
-| `content`    | `string`   | Text content of the message        | Conditional |
-| `media_url`  | `string`   | URL to external media (e.g., S3 link) | Conditional |
-| *Note:* Either `content` or `media_url` must be provided. |
-
-### `UserCardResponse` (internal/api/models.go)
-
-Response body for `GET /v1/users/with-chat-info`.
-
-| Field Name             | Type         | Description                                    | Required |
-| :----------------------- | :----------- | :--------------------------------------------- | :------- |
-| `id`                     | `int64`      | Unique identifier for the user                 | Yes      |
-| `username`               | `string`     | User's chosen display name                     | Yes      |
-| `email`                  | `string`     | User's email address                           | Yes      |
-| `last_message_content`   | `*string`    | Content of the last P2P message with the current user | Optional |
-| `last_message_timestamp` | `*timestamp` | Timestamp of the last P2P message with the current user | Optional |
-| `last_message_sender_id` | `*int64`     | ID of the sender of the last P2P message       | Optional |
-
-### `WS.Message` (internal/ws/models.go)
-
-WebSocket message structure for real-time communication.
-
-| Field Name    | Type             | Description                                  | Required |
-| :------------ | :--------------- | :------------------------------------------- | :------- |
-| `id`          | `int64`          | Unique identifier for the message            | Yes      |
-| `sender_id`   | `int64`          | ID of the user who sent the message          | Yes      |
-| `recipient_id` | `int64`          | ID of the recipient user or group            | Yes      |
-| `type`        | `domain.MessageType` | Type of message (text, image, system)        | Yes      |
-| `content`     | `string`         | Text content of the message                  | Yes      |
-| `media_url`   | `string`         | URL to external media (e.g., image file)     | Optional |
-| `timestamp`   | `timestamp`      | Time when the message was sent               | Yes      |
-
-### `WS.TypingNotification` (internal/ws/models.go)
-
-WebSocket message structure for typing indicators.
-
-| Field Name    | Type             | Description                     | Required |
-| :------------ | :--------------- | :------------------------------ | :------- |
-| `sender_id`   | `int64`          | ID of the user who is typing    | Yes      |
-| `recipient_id` | `int64`          | ID of the recipient user or group | Yes      |
-| `type`        | `domain.MessageType` | Must be `domain.TypingMessage`  | Yes      |
-
-## 2. API Endpoint Specifications
-
-### `POST /v1/users/register`
-
-Description: Registers a new user account.
-
-Authentication: No
-
-Request Body JSON Schema: `RegisterRequest`
-```json
-{
-    "username": "newuser",
-    "email": "newuser@temp.com",
-    "password": "securepassword123"
-}
-```
-
-Response JSON Schema: `AuthResponse`
-```json
-{
-    "message": "User registered successfully",
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-Status Codes:
-*   `201 Created`: User registered successfully.
-*   `400 Bad Request`: Invalid request format or missing fields.
-*   `409 Conflict`: User with email already exists.
-*   `500 Internal Server Error`: Backend error.
-
-### `POST /v1/users/login`
-
-Description: Authenticates a user and returns a JWT.
-
-Authentication: No
-
-Request Body JSON Schema: `LoginRequest`
-```json
-{
-    "email": "user@temp.com",
-    "password": "securepassword123"
-}
-```
-
-Response JSON Schema: `AuthResponse`
-```json
-{
-    "message": "Login successful",
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-Status Codes:
-*   `200 OK`: Login successful.
-*   `400 Bad Request`: Invalid request format or missing fields.
-*   `401 Unauthorized`: Invalid email or password.
-*   `500 Internal Server Error`: Backend error.
-
-### `GET /v1/users`
-
-Description: Retrieves a list of all registered users in the system.
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema: N/A
-
-Response JSON Schema: `[]domain.User` (password field omitted)
-```json
-[
-    {
-        "id": 1,
-        "username": "tom",
-        "email": "tom@temp.com",
-        "created_at": "2023-10-27T10:00:00Z"
-    },
-    {
-        "id": 2,
-        "username": "jerry",
-        "email": "jerry@temp.com",
-        "created_at": "2023-10-27T10:01:00Z"
-    }
-]
-```
-
-Status Codes:
-*   `200 OK`: User list retrieved successfully.
-*   `401 Unauthorized`: Invalid or missing JWT.
-*   `500 Internal Server Error`: Backend error.
-
-### `GET /v1/users/with-chat-info`
-
-Description: Retrieves a list of all registered users, each including the latest P2P message snippet and timestamp with the authenticated user (if a conversation exists). Ideal for building chat cards.
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema: N/A
-
-Response JSON Schema: `[]api.UserCardResponse`
-```json
-[
-    {
-        "id": 1,
-        "username": "tom",
-        "email": "tom@temp.com",
-        "last_message_content": "Are you there?",
-        "last_message_timestamp": "2023-10-27T10:05:00Z",
-        "last_message_sender_id": 2
-    },
-    {
-        "id": 3,
-        "username": "alice",
-        "email": "alice@temp.com",
-        "last_message_content": null,
-        "last_message_timestamp": null,
-        "last_message_sender_id": null
-    }
-]
-```
-
-Status Codes:
-*   `200 OK`: User list with chat info retrieved successfully.
-*   `401 Unauthorized`: Invalid or missing JWT.
-*   `500 Internal Server Error`: Backend error.
-
-### `GET /v1/messages/history/:recipientID`
-
-Description: Retrieves paginated P2P message history between the authenticated user and a specific recipient. Messages are returned in chronological order (oldest to newest).
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema: N/A
-
-Pagination, Sorting, Filtering:
-*   `recipientID` (Path Parameter): `int64`, ID of the other user in the conversation.
-*   `limit` (Query Parameter): `int`, Maximum number of messages to return (default: 50).
-*   `before_id` (Query Parameter): `int64`, Messages with an ID less than this will be returned (for fetching older messages).
-
-Response JSON Schema:
-```json
-{
-    "messages": [
-        {
-            "id": 101,
-            "sender_id": 1,
-            "recipient_id": 2,
-            "type": "text",
-            "content": "Hello Jerry!",
-            "media_url": "",
-            "timestamp": "2023-10-27T10:00:00Z",
-            "status": "SENT"
-        },
-        {
-            "id": 102,
-            "sender_id": 2,
-            "recipient_id": 1,
-            "type": "text",
-            "content": "Hi Tom!",
-            "media_url": "",
-            "timestamp": "2023-10-27T10:01:00Z",
-            "status": "SENT"
-        }
-    ],
-    "count": 2
-}
-```
-
-Status Codes:
-*   `200 OK`: Message history retrieved successfully.
-*   `400 Bad Request`: Invalid recipient ID or query parameters.
-*   `401 Unauthorized`: Invalid or missing JWT.
-*   `500 Internal Server Error`: Backend error.
-
-### `GET /v1/chats`
-
-Description: Retrieves the latest message from each unique P2P and Group conversation the authenticated user is part of. Represents the main "recent chats" list.
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema: N/A
-
-Response JSON Schema: `[]domain.Message`
-```json
-[
-    {
-        "id": 105,
-        "sender_id": 1,
-        "recipient_id": 2,
-        "type": "text",
-        "content": "See you later!",
-        "media_url": "",
-        "timestamp": "2023-10-27T10:15:00Z",
-        "status": "SENT"
-    },
-    {
-        "id": 203,
-        "sender_id": 1,
-        "recipient_id": 100,
-        "type": "text",
-        "content": "Meeting at 3 PM?",
-        "media_url": "",
-        "timestamp": "2023-10-27T09:30:00Z",
-        "status": "SENT"
-    }
-]
-```
-
-Status Codes:
-*   `200 OK`: Recent conversations retrieved successfully.
-*   `401 Unauthorized`: Invalid or missing JWT.
-*   `500 Internal Server Error`: Backend error.
-
-### `POST /v1/groups`
-
-Description: Creates a new chat group.
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema:
-```json
-{
-    "name": "Team Alpha"
-}
-```
-
-Response JSON Schema: `domain.Group`
-```json
-{
-    "id": 100,
-    "name": "Team Alpha",
-    "owner_id": 1,
-    "created_at": "2023-10-27T11:00:00Z"
-}
-```
-
-Status Codes:
-*   `201 Created`: Group created successfully.
-*   `400 Bad Request`: Invalid request format or missing name.
-*   `401 Unauthorized`: Invalid or missing JWT.
-*   `500 Internal Server Error`: Backend error.
-
-### `POST /v1/groups/:groupID/members`
-
-Description: Adds a member to an existing group. The authenticated user must be the group owner.
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema:
-```json
-{
-    "user_id": 3
-}
-```
-
-Response JSON Schema:
-```json
-{
-    "message": "Member added successfully"
-}
-```
-
-Status Codes:
-*   `200 OK`: Member added successfully.
-*   `400 Bad Request`: Invalid group ID, user ID, or request format.
-*   `401 Unauthorized`: Invalid or missing JWT.
-*   `403 Forbidden`: Authenticated user is not the group owner.
-*   `404 Not Found`: Group or user to be added does not exist.
-*   `409 Conflict`: User is already a member of the group.
-*   `500 Internal Server Error`: Backend error.
-
-### `GET /v1/groups/:groupID/members`
-
-Description: Retrieves a list of user IDs for all members of a specific group. The authenticated user must be a member of the group.
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema: N/A
-
-Response JSON Schema:
-```json
-{
-    "members": [1, 2, 3]
-}
-```
-
-Status Codes:
-*   `200 OK`: Group members retrieved successfully.
-*   `400 Bad Request`: Invalid group ID.
-*   `401 Unauthorized`: Invalid or missing JWT.
-*   `403 Forbidden`: Authenticated user is not a member of the group.
-*   `404 Not Found`: Group not found.
-*   `500 Internal Server Error`: Backend error.
-
-### `GET /v1/groups/:groupID/messages`
-
-Description: Retrieves paginated message history for a specific group. Messages are returned in chronological order (oldest to newest). The authenticated user must be a member of the group.
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema: N/A
-
-Pagination, Sorting, Filtering:
-*   `groupID` (Path Parameter): `int64`, ID of the group.
-*   `limit` (Query Parameter): `int`, Maximum number of messages to return (default: 50).
-*   `before_id` (Query Parameter): `int64`, Messages with an ID less than this will be returned (for fetching older messages).
-
-Response JSON Schema:
-```json
-{
-    "messages": [
-        {
-            "id": 201,
-            "sender_id": 1,
-            "recipient_id": 100,
-            "type": "text",
-            "content": "Welcome everyone!",
-            "media_url": "",
-            "timestamp": "2023-10-27T09:00:00Z",
-            "status": "SENT"
-        },
-        {
-            "id": 202,
-            "sender_id": 2,
-            "recipient_id": 100,
-            "type": "text",
-            "content": "Hey Tom!",
-            "media_url": "",
-            "timestamp": "2023-10-27T09:01:00Z",
-            "status": "SENT"
-        }
-    ],
-    "count": 2
-}
-```
-
-Status Codes:
-*   `200 OK`: Group message history retrieved successfully.
-*   `400 Bad Request`: Invalid group ID or query parameters.
-*   `401 Unauthorized`: Invalid or missing JWT.
-*   `403 Forbidden`: Authenticated user is not a member of the group.
-*   `404 Not Found`: Group not found.
-*   `500 Internal Server Error`: Backend error.
-
-### `POST /v1/messages/group/:groupID`
-
-Description: Sends a new message to a specific group. The authenticated user must be a member of the group.
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema: `SendGroupMessageRequest`
-```json
-{
-    "content": "Hello team!",
-    "media_url": ""
-}
-```
-OR
-```json
-{
-    "content": "",
-    "media_url": "https://example.com/image.jpg"
-}
-```
-
-Response JSON Schema:
-```json
-{
-    "message": "Message sent successfully to group"
-}
-```
-
-Status Codes:
-*   `200 OK`: Message sent successfully.
-*   `400 Bad Request`: Invalid group ID, request body, or empty message.
-*   `401 Unauthorized`: Invalid or missing JWT.
-*   `403 Forbidden`: Sender is not a member of the group.
-*   `500 Internal Server Error`: Backend error.
-
-### `POST /v1/messages/p2p/:recipientID`
-
-Description: Sends a new P2P message to a specific user.
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema: `SendGroupMessageRequest` (reused)
-```json
-{
-    "content": "Hi there!",
-    "media_url": ""
-}
-```
-OR
-```json
-{
-    "content": "",
-    "media_url": "https://example.com/image.jpg"
-}
-```
-
-Response JSON Schema:
-```json
-{
-    "message": "P2P message sent successfully"
-}
-```
-
-Status Codes:
-*   `200 OK`: Message sent successfully.
-*   `400 Bad Request`: Invalid recipient ID, request body, or empty message. Cannot send message to self.
-*   `401 Unauthorized`: Invalid or missing JWT.
-*   `404 Not Found`: Recipient user not found.
-*   `500 Internal Server Error`: Backend error.
-
-### `GET /ws`
-
-Description: Establishes a WebSocket connection for real-time messaging and typing notifications. All P2P and Group messages involving the authenticated user are pushed over this connection. Offline messages are delivered upon connection.
-
-Authentication: Yes (JWT via `token` query parameter)
-
-Request Body JSON Schema: N/A (WebSocket connection upgrade)
-
-Response (WebSocket Messages - `WS.Message` / `WS.TypingNotification`):
-*   **System Message (upon connection):**
-    ```json
-    {
-        "id": 0,
-        "sender_id": 0,
-        "recipient_id": 0,
-        "type": "system",
-        "content": "Welcome to the chat server.",
-        "media_url": "",
-        "timestamp": "2023-10-27T10:00:00Z"
-    }
-    ```
-*   **Incoming Chat Message:**
-    ```json
-    {
-        "id": 106,
-        "sender_id": 1,
-        "recipient_id": 2,
-        "type": "text",
-        "content": "Are you free for lunch?",
-        "media_url": "",
-        "timestamp": "2023-10-27T10:30:00Z"
-    }
-    ```
-*   **Typing Notification:** (Transient, not persisted)
-    ```json
-    {
-        "sender_id": 1,
-        "recipient_id": 2,
-        "type": "typing"
-    }
-    ```
-
-Status Codes:
-*   `101 Switching Protocols`: WebSocket connection successful.
-*   `400 Bad Request`: Missing `token` query parameter.
-*   `401 Unauthorized`: Invalid or expired JWT.
-
-### `GET /v1/test-auth`
-
-Description: A test endpoint to verify JWT authentication.
-
-Authentication: Yes (JWT)
-
-Request Body JSON Schema: N/A
-
-Response JSON Schema:
-```json
-{
-    "message": "Access granted",
-    "user_id": 1
-}
-```
-
-Status Codes:
-*   `200 OK`: Access granted.
-*   `401 Unauthorized`: Invalid or missing JWT.
-
-### `GET /ping`
-
-Description: Simple health check endpoint.
-
-Authentication: No
-
-Request Body JSON Schema: N/A
-
-Response JSON Schema:
-```json
-{
-    "message": "pong",
-    "db_driver": "sqlite3"
-}
-```
-
-Status Codes:
-*   `200 OK`: Server is responsive.
-
-## 3. CRUD Summary per Model
+Before diving into the API, it's essential to understand the building blocks of our chat system. These models represent the core entities you will be working with.
 
 ### `User`
+This is the heart of the system, representing a person who can send and receive messages. When you fetch a user's details, you will receive an object with this structure. Note that the `password` is never sent to the client.
 
-| Operation | Endpoint                     | Description                                    | Request Body                 | Response Body                  |
-| :-------- | :--------------------------- | :--------------------------------------------- | :--------------------------- | :----------------------------- |
-| Create    | `POST /v1/users/register`    | Registers a new user.                          | `api.RegisterRequest`        | `api.AuthResponse`             |
-| Read      | `GET /v1/users`              | Lists all users.                               | N/A                          | `[]domain.User`                |
-| Read      | `GET /v1/users/with-chat-info` | Lists all users with latest message previews.  | N/A                          | `[]api.UserCardResponse`       |
-| Read      | `POST /v1/users/login`       | Authenticates user, returning JWT.             | `api.LoginRequest`           | `api.AuthResponse`             |
-| Update    | *Not exposed*                 | User profile updates.                          | N/A                          | N/A                            |
-| Delete    | *Not exposed*                 | User account deletion.                         | N/A                          | N/A                            |
-
-### `Message`
-
-| Operation | Endpoint                              | Description                                    | Request Body                 | Response Body                  |
-| :-------- | :------------------------------------ | :--------------------------------------------- | :--------------------------- | :----------------------------- |
-| Create    | `POST /v1/messages/p2p/:recipientID`  | Sends a P2P message.                           | `api.SendGroupMessageRequest`| `{"message": "..."}`           |
-| Create    | `POST /v1/messages/group/:groupID`    | Sends a group message.                         | `api.SendGroupMessageRequest`| `{"message": "..."}`           |
-| Read      | `GET /v1/messages/history/:recipientID` | Retrieves paginated P2P history.               | N/A                          | `{"messages": [], "count": N}` |
-| Read      | `GET /v1/groups/:groupID/messages`    | Retrieves paginated group history.             | N/A                          | `{"messages": [], "count": N}` |
-| Read      | `GET /v1/chats`                       | Retrieves latest message from all conversations. | N/A                          | `[]domain.Message`             |
-| Read      | `GET /ws`                             | Receives real-time messages via WebSocket.     | N/A                          | `ws.Message` or `ws.TypingNotification` |
-| Update    | *Internal Only*                       | Status updates (`PENDING` -> `DELIVERED`).      | N/A                          | N/A                            |
-| Delete    | *Not exposed*                         | Message deletion.                              | N/A                          | N/A                            |
+| Field Name   | Type        | Description                                       |
+| :----------- | :---------- | :------------------------------------------------ |
+| `id`         | `int64`     | The unique, permanent number identifying this user. |
+| `username`   | `string`    | The user's public display name.                   |
+| `email`      | `string`    | The user's private email, used for login.         |
+| `created_at` | `time.Time` | The exact moment this user registered.            |
 
 ### `Group`
+This represents a chat room where multiple users can converse. Each group has a name and is owned by the user who created it.
 
-| Operation | Endpoint                     | Description                                    | Request Body                 | Response Body                  |
-| :-------- | :--------------------------- | :--------------------------------------------- | :--------------------------- | :----------------------------- |
-| Create    | `POST /v1/groups`            | Creates a new group.                           | `{"name": "..."}`            | `domain.Group`                 |
-| Read      | *Not exposed*                 | Retrieve a single group by ID (internal to service). | N/A                          | N/A                            |
-| Update    | *Not exposed*                 | Group name updates.                            | N/A                          | N/A                            |
-| Delete    | *Not exposed*                 | Group deletion.                                | N/A                          | N/A                            |
+| Field Name   | Type        | Description                                    |
+| :----------- | :---------- | :--------------------------------------------- |
+| `id`         | `int64`     | The unique, permanent number identifying this group. |
+| `name`       | `string`    | The public display name of the group.          |
+| `owner_id`   | `int64`     | The `id` of the user who created the group.    |
+| `created_at` | `time.Time` | The exact moment this group was created.       |
 
-### `GroupMember`
+### `Message`
+This is a single communication sent by a user. Its destination is determined by the `recipient_id`, which can be either another user's ID (for a private chat) or a group's ID (for a group chat).
 
-| Operation | Endpoint                     | Description                                    | Request Body                 | Response Body                  |
-| :-------- | :--------------------------- | :--------------------------------------------- | :--------------------------- | :----------------------------- |
-| Create    | `POST /v1/groups/:groupID/members` | Adds a user as a member to a group.            | `{"user_id": N}`             | `{"message": "..."}`           |
-| Read      | `GET /v1/groups/:groupID/members` | Lists user IDs of all members in a group.      | N/A                          | `{"members": []}`              |
-| Update    | *Not exposed*                 | Change member role (e.g., admin).              | N/A                          | N/A                            |
-| Delete    | *Not exposed*                 | Remove member from group.                      | N/A                          | N/A                            |
+| Field Name     | Type            | Description                                                     |
+| :------------- | :-------------- | :-------------------------------------------------------------- |
+| `id`           | `int64`         | The unique, permanent number for this message.                  |
+| `sender_id`    | `int64`         | The `id` of the user who sent the message.                      |
+| `recipient_id` | `int64`         | The `id` of the target `User` or `Group`.                       |
+| `type`         | `MessageType`   | The kind of message (e.g., `text`, `image`).                    |
+| `content`      | `string`        | The actual text content of the message.                         |
+| `media_url`    | `string`        | A URL pointing to an image or file, if applicable.              |
+| `timestamp`    | `time.Time`     | The exact moment the server received the message.               |
+| `status`       | `MessageStatus` | The delivery status (e.g., `SENT`, `PENDING`).                  |
+
+### `UserCardResponse`
+This is a special, combined model designed specifically for building the main chat list UI. It's a `User` object enriched with details about the very last message exchanged between them and the currently logged-in user. This allows you to build a "chat card" preview without making extra API calls.
+
+| Field Name               | Type         | Description                                                          |
+| :----------------------- | :----------- | :------------------------------------------------------------------- |
+| `id`                     | `int64`      | The user's unique ID.                                                |
+| `username`               | `string`     | The user's display name.                                             |
+| `email`                  | `string`     | The user's email.                                                    |
+| `last_message_content`   | `*string`    | The text of the last message. It will be `null` if no conversation exists. |
+| `last_message_timestamp` | `*time.Time` | The timestamp of the last message. `null` if no conversation exists.   |
+| `last_message_sender_id` | `*int64`     | The ID of who sent the last message. `null` if no conversation exists. |
+
+---
+
+## 2. The Grand Tour: API Endpoint Specifications
+
+Here is a detailed walkthrough of every available API endpoint.
+
+### Authentication (`/v1/users`)
+
+These endpoints are your entry point. They are public and do not require an authentication token.
+
+#### `POST /v1/users/register`
+**Purpose:** To create a new user account. On success, the server automatically logs the user in and provides a JWT, ready for immediate use.
+
+*   **Request Body:**
+    ```json
+    {
+        "username": "newuser",
+        "email": "newuser@temp.com",
+        "password": "a-very-secure-password"
+    }
+    ```
+*   **Success Response (`201 Created`):**
+    ```json
+    {
+        "message": "User registered successfully",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    }
+    ```
+*   **Error Responses:**
+    *   `400 Bad Request`: One of the fields was missing or invalid.
+    *   `409 Conflict`: A user with that email address already exists.
+
+#### `POST /v1/users/login`
+**Purpose:** To authenticate an existing user. On success, the server provides a JWT to be used in the `Authorization` header for all subsequent protected requests.
+
+*   **Request Body:**
+    ```json
+    {
+        "email": "tom@temp.com",
+        "password": "password123"
+    }
+    ```
+*   **Success Response (`200 OK`):**
+    ```json
+    {
+        "message": "Login successful",
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+    }
+    ```
+*   **Error Responses:**
+    *   `401 Unauthorized`: The email or password was incorrect.
+
+### User Management (`/v1/users`)
+
+These endpoints require a valid JWT in the `Authorization: Bearer <token>` header.
+
+#### `GET /v1/users`
+**Purpose:** To fetch a list of every registered user in the system. This is useful for a "new chat" or "contacts" screen where a user can search for anyone to talk to.
+
+*   **Response (`200 OK`):** An array of `User` objects.
+    ```json
+    [
+        { "id": 1, "username": "tom", "email": "tom@temp.com", "created_at": "..." },
+        { "id": 2, "username": "jerry", "email": "jerry@temp.com", "created_at": "..." }
+    ]
+    ```
+
+#### `GET /v1/users/:userID`
+**Purpose:** To fetch the public profile of a single user by their ID. This is useful when you have a `user_id` (e.g., from a message object) and need to display their name.
+
+*   **Path Parameter:** `userID` - The unique ID of the user you want to retrieve.
+*   **Response (`200 OK`):** A single `User` object.
+    ```json
+    { "id": 2, "username": "jerry", "email": "jerry@temp.com", "created_at": "..." }
+    ```
+*   **Error Responses:**
+    *   `404 Not Found`: No user exists with that ID.
+
+#### `GET /v1/users/with-chat-info`
+**Purpose:** The powerhouse endpoint for building your main chat list. It returns a list of all users, but each user is enriched with details of the last private message exchanged with the *authenticated* user.
+
+*   **Response (`200 OK`):** An array of `UserCardResponse` objects.
+    ```json
+    [
+        {
+            "id": 2,
+            "username": "jerry",
+            "email": "jerry@temp.com",
+            "last_message_content": "See you tomorrow!",
+            "last_message_timestamp": "2025-11-05T10:05:00Z",
+            "last_message_sender_id": 1
+        },
+        {
+            "id": 3,
+            "username": "alice",
+            "email": "alice@temp.com",
+            "last_message_content": null,
+            "last_message_timestamp": null,
+            "last_message_sender_id": null
+        }
+    ]
+    ```
+
+### Chat & Message Management (`/v1/chats`, `/v1/messages`)
+
+#### `GET /v1/chats`
+**Purpose:** To get the most recent message from every single conversation (both P2P and group) that the user is a part of. This is the ideal endpoint for populating the main "Chats" screen, showing a list of all ongoing conversations sorted by recent activity.
+
+*   **Response (`200 OK`):** An array of `Message` objects.
+    ```json
+    [
+        // The latest message from the chat with user 2
+        { "id": 105, "sender_id": 1, "recipient_id": 2, "content": "Sounds good!", ... },
+        // The latest message from the chat in group 5
+        { "id": 203, "sender_id": 3, "recipient_id": 5, "content": "Let's start the meeting.", ... }
+    ]
+    ```
+
+#### `GET /v1/messages/history/:recipientID`
+**Purpose:** To fetch the full conversation history for a private (P2P) chat with another user. This is what you call when a user clicks on a chat to open it.
+
+*   **Path Parameter:** `recipientID` - The `id` of the *other* user in the conversation.
+*   **Query Parameters (for pagination):**
+    *   `limit` (optional, default `50`): How many messages to retrieve.
+    *   `before_id` (optional): To fetch older messages, provide the ID of the oldest message you currently have. The server will return messages created before that one.
+*   **Response (`200 OK`):** An array of `Message` objects.
+    ```json
+    [
+        { "id": 101, "sender_id": 1, "recipient_id": 2, "content": "Hello Jerry!", ... },
+        { "id": 102, "sender_id": 2, "recipient_id": 1, "content": "Hi Tom!", ... }
+    ]
+    ```
+
+### Group Management (`/v1/groups`)
+
+#### `GET /v1/groups`
+**Purpose:** To fetch a list of every group that the authenticated user is currently a member of.
+
+*   **Response (`200 OK`):** An array of `Group` objects.
+    ```json
+    [
+        { "id": 5, "name": "Project Team", "owner_id": 1, "created_at": "..." },
+        { "id": 8, "name": "Weekend Plans", "owner_id": 3, "created_at": "..." }
+    ]
+    ```
+
+#### `POST /v1/groups`
+**Purpose:** To create a new group. The user making the request automatically becomes the owner and first member of the group.
+
+*   **Request Body:**
+    ```json
+    {
+        "name": "New Project Group"
+    }
+    ```
+*   **Success Response (`201 Created`):** A detailed object about the newly created group.
+    ```json
+    {
+        "message": "Group created successfully",
+        "group_id": 12,
+        "name": "New Project Group",
+        "owner_id": 1
+    }
+    ```
+
+#### `GET /v1/groups/:groupID/members`
+**Purpose:** To get a list of all users who are members of a specific group.
+
+*   **Path Parameter:** `groupID` - The ID of the group to inspect.
+*   **Response (`200 OK`):**
+    ```json
+    {
+        "group_id": 12,
+        "members": [1, 3, 5]
+    }
+    ```
+
+#### `POST /v1/groups/:groupID/members`
+**Purpose:** To add another user to a group. *(Note: Currently, any member can add another user. In the future, this will be restricted to group admins).*
+
+*   **Path Parameter:** `groupID` - The ID of the group to add someone to.
+*   **Request Body:**
+    ```json
+    {
+        "user_id": 4
+    }
+    ```
+*   **Success Response (`200 OK`):**
+    ```json
+    { "message": "Member added successfully" }
+    ```
+
+#### `GET /v1/groups/:groupID/messages`
+**Purpose:** To fetch the full conversation history for a group chat.
+
+*   **Path Parameter:** `groupID` - The ID of the group.
+*   **Query Parameters (for pagination):**
+    *   `limit` (optional, default `50`): How many messages to retrieve.
+    *   `before_id` (optional): For fetching older messages.
+*   **Response (`200 OK`):** An array of `Message` objects, where `recipient_id` will be the `groupID`.
+    ```json
+    [
+        { "id": 201, "sender_id": 1, "recipient_id": 12, "content": "Welcome!", ... }
+    ]
+    ```
+
+### Real-Time Communication (`/ws`)
+
+This is not a standard REST endpoint but the gateway to our real-time messaging system.
+
+#### `GET /ws`
+**Purpose:** To upgrade the HTTP connection to a persistent WebSocket connection. All real-time events (new messages, typing indicators) will be pushed from the server to the client over this connection.
+
+*   **Authentication:** The JWT must be passed as a query parameter.
+    *   `ws://localhost:8080/ws?token=<JWT_TOKEN>`
+*   **Messages Sent from Client to Server:** To send a message, the client sends a JSON string.
+    *   **P2P Message:**
+        ```json
+        {
+          "type": "p2p_message",
+          "sender_id": 1,
+          "recipient_id": 2,
+          "content": "This is a live message!"
+        }
+        ```
+    *   **Group Message:**
+        ```json
+        {
+          "type": "group_message",
+          "sender_id": 1,
+          "group_id": 12,
+          "content": "Hello everyone in the group!"
+        }
+        ```
+*   **Messages Received by Client from Server:** The server will push messages with the following structure.
+    *   **P2P Message:**
+        ```json
+        {
+            "id": 108,
+            "sender_id": 2,
+            "recipient_id": 1,
+            "group_id": 0,
+            "type": "text",
+            "content": "I got your message!",
+            "media_url": "",
+            "timestamp": "2025-11-05T12:00:00Z"
+        }
+        ```
+    *   **Group Message:**
+        ```json
+        {
+            "id": 205,
+            "sender_id": 3,
+            "recipient_id": 12,
+            "group_id": 12,
+            "type": "text",
+            "content": "Let's sync up.",
+            "media_url": "",
+            "timestamp": "2025-11-05T12:01:00Z"
+        }
+        ```
