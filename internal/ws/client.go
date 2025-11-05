@@ -79,19 +79,22 @@ func (c *Client) readPump() {
 			// It's a structured message (e.g., image, typing).
 			var message Message
 			if err := json.Unmarshal(payload, &message); err == nil {
-				// Add validation for message type
+				// Basic validation
 				if message.Type == "" {
 					log.Printf("User %d sent structured message with no type. Discarding.", c.UserID)
 					continue
 				}
 
+				// Populate server-side fields
 				message.SenderID = c.UserID
 				message.Timestamp = time.Now()
 
-				// Hub uses RecipientID for routing both P2P and group messages.
+				// Determine recipient and routing logic
 				if message.GroupID != 0 {
+					// Explicit group message: Hub routes based on RecipientID
 					message.RecipientID = message.GroupID
-				} else if message.RecipientID == 0 { // If no recipient in message, use context
+				} else if message.RecipientID == 0 {
+					// No recipient in message, so we must use the context
 					if c.currentTargetID == 0 {
 						log.Printf("User %d sent structured message with no recipient and no context. Discarding.", c.UserID)
 						continue
@@ -101,7 +104,9 @@ func (c *Client) readPump() {
 						message.GroupID = c.currentTargetID
 					}
 				}
+				// Note: If RecipientID is set but GroupID is not, the Hub will determine if it's a P2P or group chat.
 
+				// Route the message to the appropriate channel
 				if message.Type == domain.TypingMessage {
 					c.Hub.Typing <- &message
 				} else {
