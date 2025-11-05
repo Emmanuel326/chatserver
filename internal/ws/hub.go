@@ -221,11 +221,11 @@ func (h *Hub) handleBroadcast(message *Message) {
 	}
 }
 
-// handleGroupBroadcast persists a group message and dispatches it to online members.
+// handleGroupBroadcast persists a group message by calling the message service.
+// The service is then responsible for calling back to the hub to dispatch the message.
 func (h *Hub) handleGroupBroadcast(message *Message, members []int64) {
-	log.Printf("Broadcasting GROUP message from User %d to Group %d...", message.SenderID, message.RecipientID)
-	
-	// 1. Group messages are not queued for offline users; their status is always 'SENT'.
+	log.Printf("Persisting GROUP message from User %d to Group %d...", message.SenderID, message.RecipientID)
+
 	domainMsg := &domain.Message{
 		SenderID:    message.SenderID,
 		RecipientID: message.RecipientID,
@@ -233,33 +233,23 @@ func (h *Hub) handleGroupBroadcast(message *Message, members []int64) {
 		Content:     message.Content,
 		MediaURL:    message.MediaURL,
 		Timestamp:   message.Timestamp,
-		Status:      domain.MessageSent, 
+		Status:      domain.MessageSent, // Group messages are not queued for offline users
 	}
 
-	// 2. Persist the message.
-	persistedMsg, err := h.MessageService.Save(context.Background(), domainMsg)
-	if err != nil {
+	// Persist the message. The MessageService will call hub.BroadcastGroupMessage for dispatch.
+	if _, err := h.MessageService.Save(context.Background(), domainMsg); err != nil {
 		log.Printf("Error persisting group message: %v", err)
-		return
-	}
-	wsMsg := h.domainToWsMessage(persistedMsg)
-
-	// 3. Dispatch the message only to the ONLINE members of the group.
-	for _, memberID := range members {
-		if h.isUserOnline(memberID) {
-			h.sendMessageToUser(memberID, wsMsg)
-		}
 	}
 }
 
-// handleP2PBroadcast persists a P2P message, queuing it if the recipient is offline.
+// handleP2PBroadcast persists a P2P message by calling the message service.
+// The service is then responsible for calling back to the hub to dispatch the message.
 func (h *Hub) handleP2PBroadcast(message *Message) {
-	log.Printf("Broadcasting P2P message from User %d to User %d...", message.SenderID, message.RecipientID)
+	log.Printf("Persisting P2P message from User %d to User %d...", message.SenderID, message.RecipientID)
 
-	// 1. Check recipient's online status to determine message status ('SENT' or 'PENDING').
-	recipientOnline := h.isUserOnline(message.RecipientID)
+	// Determine message status based on recipient's online status.
 	status := domain.MessageSent
-	if !recipientOnline {
+	if !h.isUserOnline(message.RecipientID) {
 		status = domain.MessagePending
 	}
 
@@ -273,22 +263,9 @@ func (h *Hub) handleP2PBroadcast(message *Message) {
 		Status:      status,
 	}
 
-	// 2. Persist the message.
-	persistedMsg, err := h.MessageService.Save(context.Background(), domainMsg)
-	if err != nil {
+	// Persist the message. The MessageService will call hub.BroadcastP2PMessage for dispatch.
+	if _, err := h.MessageService.Save(context.Background(), domainMsg); err != nil {
 		log.Printf("Error persisting P2P message: %v", err)
-		return
-	}
-	wsMsg := h.domainToWsMessage(persistedMsg)
-
-	// 3. The sender always gets an echo of their message.
-	h.sendMessageToUser(message.SenderID, wsMsg)
-
-	// 4. Dispatch to the recipient ONLY if they are currently online.
-	if recipientOnline {
-		h.sendMessageToUser(message.RecipientID, wsMsg)
-	} else {
-		log.Printf("Recipient %d is offline. Message (ID %d) will be delivered on next connection.", message.RecipientID, persistedMsg.ID)
 	}
 }
 
@@ -335,13 +312,25 @@ func (h *Hub) domainToWsMessage(dMsg *domain.Message) *Message {
 }
 
 // BroadcastGroupMessage implements the domain.Hub interface.
-// It is called by the MessageService after a group message is saved.
+// It is called by the MessageService after a group message has been saved.
 func (h *Hub) BroadcastGroupMessage(groupID int64, message *domain.Message) {
-    // Convert the domain message to the Hub's internal ws.Message type
-    wsMsg := h.domainToWsMessage(message)
-    
-    // Send the message into the hub's main broadcast channel for processing/routing
-    h.Broadcast <- wsMsg
+	wsMsg := h.domainToWsMessage(message)
+
+	// Get the list of group members to dispatch the message.
+	members, err := h.GroupService.GetMembers(context.Background(), groupID)
+	if err != nil {
+		log.Printf("Error getting members for group %d to broadcast message: %v", groupID, err)
+		return
+	}
+
+	log.Printf("Dispatching GROUP message (ID %d) to %d members of Group %d", wsMsg.ID, len(members), groupID)
+
+	// Dispatch the message only to the ONLINE members of the group.
+	for _, memberID := range members {
+		if h.isUserOnline(memberID) {
+			h.sendMessageToUser(memberID, wsMsg)
+		}
+	}
 }
 
 
