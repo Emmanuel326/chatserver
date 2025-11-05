@@ -19,10 +19,12 @@ const (
 
 // Client is a middleman between the websocket connection and the Hub.
 type Client struct {
-	Hub *Hub
-	UserID int64 // The authenticated ID of the user
-	Conn *websocket.Conn // The actual websocket connection
-	Send chan *Message // Buffered channel of outbound messages
+	Hub             *Hub
+	UserID          int64 // The authenticated ID of the user
+	Conn            *websocket.Conn // The actual websocket connection
+	Send            chan *Message // Buffered channel of outbound messages
+	currentTargetID int64 // ID of the user or group this client is currently talking to
+	isGroupChat     bool  // Flag to distinguish between P2P and group chats
 }
 
 // readPump pumps messages from the websocket connection to the Hub.
@@ -50,32 +52,53 @@ func (c *Client) readPump() {
 			}
 			break
 		}
-		
-		// Unmarshal the incoming JSON message
-		var message Message
-		if err := json.Unmarshal(payload, &message); err != nil {
-			log.Printf("Error unmarshalling message from UserID %d: %v", c.UserID, err)
+
+		// First, try to interpret the payload as a JSON command to set chat context.
+		var command struct {
+			Action  string `json:"action"`
+			UserID  int64  `json:"user_id"`
+			GroupID int64  `json:"group_id"`
+		}
+
+		if json.Unmarshal(payload, &command) == nil && command.Action == "set_recipient" {
+			// It's a command to set the recipient.
+			if command.UserID != 0 {
+				c.currentTargetID = command.UserID
+				c.isGroupChat = false
+				log.Printf("User %d set recipient to User %d", c.UserID, c.currentTargetID)
+			} else if command.GroupID != 0 {
+				c.currentTargetID = command.GroupID
+				c.isGroupChat = true
+				log.Printf("User %d set recipient to Group %d", c.UserID, c.currentTargetID)
+			}
+			continue // Command processed, wait for next message.
+		}
+
+		// If it's not a command, treat it as a raw text message for the current target.
+		if c.currentTargetID == 0 {
+			log.Printf("User %d sent a message without setting a recipient. Discarding.", c.UserID)
+			// Optional: Send an error back to the client.
 			continue
 		}
 
-		// Populate server-side fields for security and consistency
-		message.SenderID = c.UserID
-		message.Timestamp = time.Now()
-
-		// If GroupID is present, treat it as the recipient for routing in the hub.
-		// The domain layer uses RecipientID for both P2P and group messages.
-		if message.GroupID != 0 {
-			message.RecipientID = message.GroupID
+		// Construct the message object from the raw text.
+		message := &Message{
+			SenderID:  c.UserID,
+			Content:   string(payload),
+			Timestamp: time.Now(),
+			Type:      domain.TextMessage,
 		}
 
-		// Route message to appropriate hub channel based on its type
-		if message.Type == domain.TypingMessage {
-			// Typing notifications are transient and not persisted
-			c.Hub.Typing <- &message
+		if c.isGroupChat {
+			message.GroupID = c.currentTargetID
+			message.RecipientID = c.currentTargetID // Hub uses RecipientID for routing
 		} else {
-			// Other messages are persisted and broadcast
-			c.Hub.Broadcast <- &message
+			message.RecipientID = c.currentTargetID
 		}
+
+		// Broadcast the message through the hub.
+		// Note: For features like typing notifications, the client would need to send a structured JSON message.
+		c.Hub.Broadcast <- message
 	}
 }
 
@@ -118,12 +141,14 @@ func (c *Client) writePump() {
 // ServeWs handles the websocket request from the peer.
 func ServeWs(hub *Hub, conn *websocket.Conn, userID int64) {
 	client := &Client{
-		Hub: hub,
-		UserID: userID,
-		Conn: conn,
-		Send: make(chan *Message, 256), // Buffered channel for sending
+		Hub:             hub,
+		UserID:          userID,
+		Conn:            conn,
+		Send:            make(chan *Message, 256), // Buffered channel for sending
+		currentTargetID: 0, // Initially no target
+		isGroupChat:     false,
 	}
-	
+
 	// Register the client with the Hub
 	client.Hub.Register <- client
 
