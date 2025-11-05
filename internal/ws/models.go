@@ -15,7 +15,7 @@ type Message struct {
 	Type        domain.MessageType `json:"type"`
 	GroupID int64 `json:"group_id,omitempty"`
 	Content     string `json:"content"`
-	MediaURL    string     `json: "media_url, omitempty"`
+	MediaURL    string     `json:"media_url,omitempty"`
 	Timestamp   time.Time `json:"timestamp"`
 }
 

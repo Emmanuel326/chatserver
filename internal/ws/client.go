@@ -51,25 +51,22 @@ func (c *Client) readPump() {
 			break
 		}
 		
-		// --- FIX START ---
-		var message Message // Use the Message struct from models.go
+		// Unmarshal the incoming JSON message
+		var message Message
 		if err := json.Unmarshal(payload, &message); err != nil {
-            log.Printf("JSON unmarshal error from UserID %d: %v", c.UserID, err)
-            continue // Skip invalid message
-        }
-
-		// CRITICAL FIX: Inject the sender's ID (the only authenticated ID)
-		message.SenderID = c.UserID 
-        
-                // Add server-side timestamp
-                message.Timestamp = time.Now()
-
-		if message.GroupID !=
-		0{
-			message.RecipientID =message.GroupID
+			log.Printf("Error unmarshalling message from UserID %d: %v", c.UserID, err)
+			continue
 		}
 
-		
+		// Populate server-side fields for security and consistency
+		message.SenderID = c.UserID
+		message.Timestamp = time.Now()
+
+		// If GroupID is present, treat it as the recipient for routing in the hub.
+		// The domain layer uses RecipientID for both P2P and group messages.
+		if message.GroupID != 0 {
+			message.RecipientID = message.GroupID
+		}
 
 		// Route message to appropriate hub channel based on its type
 		if message.Type == domain.TypingMessage {
