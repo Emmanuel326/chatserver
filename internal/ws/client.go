@@ -79,6 +79,12 @@ func (c *Client) readPump() {
 			// It's a structured message (e.g., image, typing).
 			var message Message
 			if err := json.Unmarshal(payload, &message); err == nil {
+				// Add validation for message type
+				if message.Type == "" {
+					log.Printf("User %d sent structured message with no type. Discarding.", c.UserID)
+					continue
+				}
+
 				message.SenderID = c.UserID
 				message.Timestamp = time.Now()
 
