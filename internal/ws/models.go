@@ -19,13 +19,6 @@ type Message struct {
 	Timestamp   time.Time `json:"timestamp"`
 }
 
-// TypingNotification is a lightweight struct for "is typing" events.
-type TypingNotification struct {
-	SenderID    int64              `json:"sender_id"`
-	RecipientID int64              `json:"recipient_id"`
-	Type        domain.MessageType `json:"type"` // Should be "typing"
-}
-
 // NewSystemMessage creates a simple system message for feedback.
 func NewSystemMessage(content string) *Message {
 	return &Message{
