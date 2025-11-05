@@ -44,7 +44,6 @@ func (c *Client) readPump() {
 	})
 
 	for {
-		// Reads the message type and payload
 		_, payload, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -53,51 +52,75 @@ func (c *Client) readPump() {
 			break
 		}
 
-		// First, try to interpret the payload as a JSON command to set chat context.
-		var command struct {
-			Action  string `json:"action"`
-			UserID  int64  `json:"user_id"`
-			GroupID int64  `json:"group_id"`
-		}
+		// Try to unmarshal into a generic map to check if it's JSON.
+		var genericMessage map[string]interface{}
+		if json.Unmarshal(payload, &genericMessage) == nil {
+			// It's JSON. Check if it's a 'set_recipient' command.
+			if action, ok := genericMessage["action"].(string); ok && action == "set_recipient" {
+				var command struct {
+					Action  string `json:"action"`
+					UserID  int64  `json:"user_id"`
+					GroupID int64  `json:"group_id"`
+				}
+				_ = json.Unmarshal(payload, &command) // No need to check err, already parsed
 
-		if json.Unmarshal(payload, &command) == nil && command.Action == "set_recipient" {
-			// It's a command to set the recipient.
-			if command.UserID != 0 {
-				c.currentTargetID = command.UserID
-				c.isGroupChat = false
-				log.Printf("User %d set recipient to User %d", c.UserID, c.currentTargetID)
-			} else if command.GroupID != 0 {
-				c.currentTargetID = command.GroupID
-				c.isGroupChat = true
-				log.Printf("User %d set recipient to Group %d", c.UserID, c.currentTargetID)
+				if command.UserID != 0 {
+					c.currentTargetID = command.UserID
+					c.isGroupChat = false
+					log.Printf("User %d set recipient to User %d", c.UserID, c.currentTargetID)
+				} else if command.GroupID != 0 {
+					c.currentTargetID = command.GroupID
+					c.isGroupChat = true
+					log.Printf("User %d set recipient to Group %d", c.UserID, c.currentTargetID)
+				}
+				continue // Command processed.
 			}
-			continue // Command processed, wait for next message.
+
+			// It's a structured message (e.g., image, typing).
+			var message Message
+			if err := json.Unmarshal(payload, &message); err == nil {
+				message.SenderID = c.UserID
+				message.Timestamp = time.Now()
+
+				// Hub uses RecipientID for routing both P2P and group messages.
+				if message.GroupID != 0 {
+					message.RecipientID = message.GroupID
+				} else if message.RecipientID == 0 { // If no recipient in message, use context
+					if c.currentTargetID == 0 {
+						log.Printf("User %d sent structured message with no recipient and no context. Discarding.", c.UserID)
+						continue
+					}
+					message.RecipientID = c.currentTargetID
+					if c.isGroupChat {
+						message.GroupID = c.currentTargetID
+					}
+				}
+
+				if message.Type == domain.TypingMessage {
+					c.Hub.Typing <- &message
+				} else {
+					c.Hub.Broadcast <- &message
+				}
+				continue
+			}
 		}
 
-		// If it's not a command, treat it as a raw text message for the current target.
+		// If it's not valid JSON, or failed to parse, treat as raw text.
 		if c.currentTargetID == 0 {
-			log.Printf("User %d sent a message without setting a recipient. Discarding.", c.UserID)
-			// Optional: Send an error back to the client.
+			log.Printf("User %d sent raw message without setting a recipient. Discarding.", c.UserID)
 			continue
 		}
 
-		// Construct the message object from the raw text.
 		message := &Message{
-			SenderID:  c.UserID,
-			Content:   string(payload),
-			Timestamp: time.Now(),
-			Type:      domain.TextMessage,
+			SenderID:    c.UserID,
+			Content:     string(payload),
+			Timestamp:   time.Now(),
+			Type:        domain.TextMessage,
+			RecipientID: c.currentTargetID,
 		}
-
 		if c.isGroupChat {
 			message.GroupID = c.currentTargetID
-			message.RecipientID = c.currentTargetID // Hub uses RecipientID for routing
-		} else {
-			message.RecipientID = c.currentTargetID
 		}
-
-		// Broadcast the message through the hub.
-		// Note: For features like typing notifications, the client would need to send a structured JSON message.
 		c.Hub.Broadcast <- message
 	}
 }
