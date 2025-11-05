@@ -31,11 +31,11 @@ const (
 type Message struct {
 	ID          int64      `json:"id" db:"id"`
 	SenderID    int64      `json:"sender_id" db:"sender_id"`
-	RecipientID int64       `json:"recipient_id" db:"recipient_id"`
-	Type        MessageType `json:"type" db:"type"`
-        Content    string       `json:"content" db:"content"`
-	MediaURL   string     `json:"media_url" db:"media_url"` 
-	Timestamp   time.Time   `json:"timestamp" db:"timestamp"`
+	RecipientID int64         `json:"recipient_id" db:"recipient_id"`
+	Type        MessageType   `json:"type" db:"type"`
+	Content     string        `json:"content" db:"content"`
+	MediaURL    string        `json:"media_url" db:"media_url"`
+	Timestamp   time.Time     `json:"timestamp" db:"timestamp"`
 	Status      MessageStatus `json:"status" db:"status"`
 }
 
